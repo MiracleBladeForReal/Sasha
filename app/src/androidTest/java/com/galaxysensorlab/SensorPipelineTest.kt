@@ -124,12 +124,15 @@ class SensorPipelineTest {
         render(png, LabSettings(noise = 0f), source).recycle()
         val destination = File(context.cacheDir, "ui-export.mp4").also { it.delete() }
         val ready = CountDownLatch(1)
+        val firstFrame = CountDownLatch(1)
         val ref = AtomicReference<LabViewModel>()
+        var retainedSeed = -1
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             scenario.onActivity { activity ->
                 val model = ViewModelProvider(activity)[LabViewModel::class.java]
                 ref.set(model)
                 model.player.addListener(object : Player.Listener {
+                    override fun onRenderedFirstFrame() { firstFrame.countDown() }
                     override fun onPlaybackStateChanged(playbackState: Int) {
                         if (playbackState == Player.STATE_READY) ready.countDown()
                     }
@@ -137,6 +140,7 @@ class SensorPipelineTest {
                 model.loadVideo(Uri.fromFile(source))
             }
             assertTrue("The actual player must open the clip", ready.await(20, TimeUnit.SECONDS))
+            assertTrue("Player must render the first frame, not only become ready",firstFrame.await(30,TimeUnit.SECONDS))
             instrumentation.waitForIdleSync()
             scenario.onActivity {
                 ref.get().player.pause()
@@ -145,18 +149,20 @@ class SensorPipelineTest {
             Thread.sleep(700)
             val before = instrumentation.uiAutomation.takeScreenshot()
             scenario.onActivity { ref.get().update(LabSettings(noise = 0f, exposure = 1.5f)) }
-            Thread.sleep(700)
-            val screenshot = instrumentation.uiAutomation.takeScreenshot()
-            // Sample only the middle of the video area, excluding labels and controls.
-            var previewDelta = 0.0
-            var samples = 0
-            for (y in screenshot.height / 5 until screenshot.height / 3 step 4) {
-                for (x in screenshot.width / 3 until screenshot.width * 2 / 3 step 4) {
-                    previewDelta += abs(Color.red(screenshot.getPixel(x, y)) - Color.red(before.getPixel(x, y)))
-                    samples++
-                }
+            // GPU compilation/rendering can outlive STATE_READY on the software emulator.
+            // Poll actual pixels with a bounded deadline instead of assuming a 700 ms redraw.
+            val redrawDeadline = System.currentTimeMillis()+15_000
+            var screenshot = instrumentation.uiAutomation.takeScreenshot()
+            var delta = previewDifference(before,screenshot)
+            while (delta <= 6.0 && System.currentTimeMillis() < redrawDeadline) {
+                screenshot.recycle()
+                Thread.sleep(150)
+                screenshot = instrumentation.uiAutomation.takeScreenshot()
+                delta = previewDifference(before,screenshot)
             }
-            assertTrue("Paused preview must redraw after changing exposure", previewDelta / samples > 6.0)
+            saveScreenshot(before,"preview-before.png")
+            saveScreenshot(screenshot,"preview-after.png")
+            assertTrue("Paused preview must redraw after changing exposure: delta=$delta",delta > 6.0)
             before.recycle()
             if (Build.VERSION.SDK_INT >= 29) {
                 val values = ContentValues().apply {
@@ -172,7 +178,11 @@ class SensorPipelineTest {
             screenshot.recycle()
             scenario.onActivity {
                 val model = ref.get()
-                model.update(LabSettings(noise = 0.5f, exposure = 0.5f))
+                val seedBefore = model.settings.noiseSeed
+                model.newTake()
+                assertNotEquals("New take UI action must change the sequence",seedBefore,model.settings.noiseSeed)
+                retainedSeed = model.settings.noiseSeed
+                model.update(LabSettings(noise = 0.5f, exposure = 0.5f, noiseSeed = retainedSeed))
                 model.exportHeight = 720
                 model.export(Uri.fromFile(destination))
             }
@@ -187,6 +197,23 @@ class SensorPipelineTest {
                 assertEquals(ref.get().message, Uri.fromFile(destination), ref.get().resultUri)
             }
             assertTrue(destination.length() > 1000)
+        }
+        val reopened = CountDownLatch(1)
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                val model = ViewModelProvider(activity)[LabViewModel::class.java]
+                model.player.addListener(object : Player.Listener {
+                    override fun onPlaybackStateChanged(state: Int) {
+                        if (state == Player.STATE_READY) reopened.countDown()
+                    }
+                })
+                if (model.player.playbackState == Player.STATE_READY) reopened.countDown()
+            }
+            assertTrue("Saved clip must reopen",reopened.await(20,TimeUnit.SECONDS))
+            scenario.onActivity { activity ->
+                val model = ViewModelProvider(activity)[LabViewModel::class.java]
+                assertEquals("Reopening must preserve the selected take",retainedSeed,model.settings.noiseSeed)
+            }
         }
         png.delete(); source.delete(); destination.delete()
         context.getSharedPreferences("lab", 0).edit().clear().commit()
@@ -317,6 +344,25 @@ class SensorPipelineTest {
             sx+=p; sy+=q; sxx+=p*p; syy+=q*q; sxy+=p*q; n++
         }
         return (sxy-sx*sy/n)/kotlin.math.sqrt((sxx-sx*sx/n)*(syy-sy*sy/n))
+    }
+
+    private fun previewDifference(a: Bitmap,b: Bitmap): Double {
+        var total=0.0; var count=0
+        for(y in b.height/5 until b.height/3 step 4) for(x in b.width/3 until b.width*2/3 step 4) {
+            total+=abs(Color.red(a.getPixel(x,y))-Color.red(b.getPixel(x,y))); count++
+        }
+        return total/count
+    }
+
+    private fun saveScreenshot(bitmap: Bitmap,name: String) {
+        if(Build.VERSION.SDK_INT < 29) return
+        val values=ContentValues().apply {
+            put(MediaStore.Images.Media.DISPLAY_NAME,name)
+            put(MediaStore.Images.Media.MIME_TYPE,"image/png")
+            put(MediaStore.Images.Media.RELATIVE_PATH,"Pictures/GalaxySensorLab-Edge-Capture-tests")
+        }
+        val uri=requireNotNull(context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,values))
+        requireNotNull(context.contentResolver.openOutputStream(uri)).use { bitmap.compress(Bitmap.CompressFormat.PNG,100,it) }
     }
 
     private fun roughness(bitmap: Bitmap): Double {

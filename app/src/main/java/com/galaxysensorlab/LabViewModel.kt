@@ -80,7 +80,7 @@ class LabViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         if (!prefs.contains("settings")) update(settings.copy(noiseSeed = NoiseSeeds.next()))
-        prefs.getString("video", null)?.let { loadVideo(Uri.parse(it)) }
+        prefs.getString("video", null)?.let { loadVideo(Uri.parse(it), newRealization = false) }
     }
 
     fun newTake() {
@@ -107,7 +107,7 @@ class LabViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun loadVideo(uri: Uri) {
+    fun loadVideo(uri: Uri, newRealization: Boolean = true) {
         if (busy) return
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
@@ -138,7 +138,7 @@ class LabViewModel(application: Application) : AndroidViewModel(application) {
                 sourceHeight = info.third
                 resultUri = null
                 message = null
-                newTake()
+                if (newRealization) newTake()
                 player.setMediaItem(MediaItem.fromUri(uri))
                 player.prepare()
                 player.playWhenReady = true
