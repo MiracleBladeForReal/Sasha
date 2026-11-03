@@ -1,5 +1,8 @@
 package com.galaxysensorlab
 
+import android.content.ContentValues
+import android.os.Build
+import android.provider.MediaStore
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.media.MediaMetadataRetriever
@@ -97,10 +100,37 @@ class SensorPipelineTest {
             }
             assertTrue("The actual player must open the clip", ready.await(20, TimeUnit.SECONDS))
             instrumentation.waitForIdleSync()
+            scenario.onActivity {
+                ref.get().player.pause()
+                ref.get().update(LabSettings(noise = 0f))
+            }
+            Thread.sleep(700)
+            val before = instrumentation.uiAutomation.takeScreenshot()
+            scenario.onActivity { ref.get().update(LabSettings(noise = 0f, exposure = 1.5f)) }
             Thread.sleep(700)
             val screenshot = instrumentation.uiAutomation.takeScreenshot()
-            val folder = File(context.getExternalFilesDir(null), "screenshots").also { it.mkdirs() }
-            File(folder, "lab-video.png").outputStream().use { screenshot.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            // Sample only the middle of the video area, excluding labels and controls.
+            var previewDelta = 0.0
+            var samples = 0
+            for (y in screenshot.height / 5 until screenshot.height / 3 step 4) {
+                for (x in screenshot.width / 3 until screenshot.width * 2 / 3 step 4) {
+                    previewDelta += abs(Color.red(screenshot.getPixel(x, y)) - Color.red(before.getPixel(x, y)))
+                    samples++
+                }
+            }
+            assertTrue("Paused preview must redraw after changing exposure", previewDelta / samples > 6.0)
+            before.recycle()
+            if (Build.VERSION.SDK_INT >= 29) {
+                val values = ContentValues().apply {
+                    put(MediaStore.Images.Media.DISPLAY_NAME, "lab-video.png")
+                    put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+                    put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/GalaxySensorLab-tests")
+                }
+                val imageUri = requireNotNull(context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values))
+                requireNotNull(context.contentResolver.openOutputStream(imageUri)).use {
+                    screenshot.compress(Bitmap.CompressFormat.PNG, 100, it)
+                }
+            }
             screenshot.recycle()
             scenario.onActivity {
                 val model = ref.get()
