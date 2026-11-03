@@ -87,7 +87,14 @@ class LabViewModel(application: Application) : AndroidViewModel(application) {
         refreshJob?.cancel()
         refreshJob = viewModelScope.launch {
             delay(100)
-            if (videoUri != null && !player.isPlaying) player.seekTo(player.currentPosition)
+            if (videoUri != null && !player.isPlaying) {
+                // ExoPlayer ignores seeks to the same millisecond. A 1 ms seek flushes the
+                // paused frame through the shader again without visibly advancing the clip.
+                val position = player.currentPosition
+                val next = if (player.duration > 1 && position >= player.duration - 1)
+                    (position - 1).coerceAtLeast(0) else position + 1
+                player.seekTo(next)
+            }
         }
     }
 
