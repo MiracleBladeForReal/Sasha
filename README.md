@@ -38,6 +38,6 @@ Il modello di varianza è `beta1 * segnale_lineare + beta2`. Lo shader usa campi
 
 ## Verifica automatica
 
-La pipeline compila APK e test, esegue Android lint e avvia un emulatore Android 10. I test strumentali verificano i coefficienti pubblicati e producono veri MP4 attraverso codec e shader GL: esposizione e rumore devono cambiare i pixel estratti dal file; bypass e metà originale del confronto devono preservarli. Verificano anche durata e decodifica dei file. I report sono artefatti della build. L’emulatore non sostituisce le prove su un Samsung fisico, specialmente per HEVC/HDR, file lunghi e stabilità termica.
+La pipeline compila APK e test, esegue Android lint e avvia un emulatore Android 15. I test strumentali verificano i coefficienti pubblicati e producono veri MP4 attraverso codec e shader GL: esposizione e rumore devono cambiare i pixel estratti dal file; bypass e metà originale del confronto devono preservarli. Verificano anche durata e decodifica dei file. Una prova apre anche l’app, riproduce una clip ed esporta dal modello applicativo; acquisisce una schermata per la verifica visiva. I report sono artefatti della build. L’emulatore non sostituisce le prove su un Samsung fisico, specialmente per HEVC/HDR, file lunghi e stabilità termica.
 
 Stack: Kotlin 2.0.21, Compose, Media3 1.5.1, Java 17, Gradle 8.9, AGP 8.7.3, SDK 35. GitHub Actions si avvia a ogni push su main, pull request o tramite Run workflow.

@@ -14,6 +14,9 @@ import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
 import androidx.media3.transformer.Transformer
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.core.app.ActivityScenario
+import androidx.lifecycle.ViewModelProvider
+import androidx.media3.common.Player
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.*
 import org.junit.Test
@@ -55,10 +58,13 @@ class SensorPipelineTest {
         val brighter = render(input, LabSettings(noise = 0f, exposure = 1.5f))
         val noisy = render(input, LabSettings(iso = 3200f, noise = 2f))
         val bypass = render(input, LabSettings(noise = 2f, exposure = 2f, original = true))
+        val denoised = render(input, LabSettings(iso = 3200f, noise = 2f, denoise = 1f))
         assertTrue("Exposure must change actual encoded pixels", meanDifference(baseline, brighter) > 12)
         assertTrue("SIDD noise must change actual encoded pixels", meanDifference(baseline, noisy) > 2)
         assertTrue("Original bypass must preserve pixels", meanDifference(baseline, bypass) < 3)
-        listOf(baseline, brighter, noisy, bypass).forEach { it.recycle() }
+        assertTrue("Denoising must reduce deviation from the clean input",
+            meanDifference(baseline, denoised) < meanDifference(baseline, noisy))
+        listOf(baseline, brighter, noisy, bypass, denoised).forEach { it.recycle() }
         input.delete()
     }
 
@@ -69,6 +75,53 @@ class SensorPipelineTest {
         assertTrue(meanDifference(base, split, 0, base.width / 3) < 3)
         assertTrue(meanDifference(base, split, base.width * 2 / 3, base.width) > 12)
         base.recycle(); split.recycle(); input.delete()
+    }
+
+    @Test fun appOpensVideoAndSavesProcessedResult() {
+        val png = createInput()
+        val source = File(context.cacheDir, "ui-source.mp4")
+        render(png, LabSettings(noise = 0f), source).recycle()
+        val destination = File(context.cacheDir, "ui-export.mp4").also { it.delete() }
+        val ready = CountDownLatch(1)
+        val ref = AtomicReference<LabViewModel>()
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                val model = ViewModelProvider(activity)[LabViewModel::class.java]
+                ref.set(model)
+                model.player.addListener(object : Player.Listener {
+                    override fun onPlaybackStateChanged(playbackState: Int) {
+                        if (playbackState == Player.STATE_READY) ready.countDown()
+                    }
+                })
+                model.loadVideo(Uri.fromFile(source))
+            }
+            assertTrue("The actual player must open the clip", ready.await(20, TimeUnit.SECONDS))
+            instrumentation.waitForIdleSync()
+            Thread.sleep(700)
+            val screenshot = instrumentation.uiAutomation.takeScreenshot()
+            val folder = File(context.getExternalFilesDir(null), "screenshots").also { it.mkdirs() }
+            File(folder, "lab-video.png").outputStream().use { screenshot.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            screenshot.recycle()
+            scenario.onActivity {
+                val model = ref.get()
+                model.update(LabSettings(noise = 0.5f, exposure = 0.5f))
+                model.exportHeight = 720
+                model.export(Uri.fromFile(destination))
+            }
+            val deadline = System.currentTimeMillis() + 60000
+            var isBusy = true
+            while (isBusy && System.currentTimeMillis() < deadline) {
+                Thread.sleep(100)
+                scenario.onActivity { isBusy = ref.get().busy }
+            }
+            scenario.onActivity {
+                assertFalse("Actual app export must complete", ref.get().busy)
+                assertEquals(ref.get().message, Uri.fromFile(destination), ref.get().resultUri)
+            }
+            assertTrue(destination.length() > 1000)
+        }
+        png.delete(); source.delete(); destination.delete()
+        context.getSharedPreferences("lab", 0).edit().clear().commit()
     }
 
     private fun createInput(): File {
@@ -83,7 +136,7 @@ class SensorPipelineTest {
         }
     }
 
-    private fun render(input: File, settings: LabSettings): Bitmap {
+    private fun render(input: File, settings: LabSettings, retainedOutput: File? = null): Bitmap {
         val output = File.createTempFile("test", ".mp4", context.cacheDir).also { it.delete() }
         val done = CountDownLatch(1)
         val failure = AtomicReference<Throwable?>()
@@ -112,6 +165,7 @@ class SensorPipelineTest {
             try {
                 reader.setDataSource(output.absolutePath)
                 assertTrue((reader.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLong() ?: 0) >= 800)
+                retainedOutput?.let { output.copyTo(it, overwrite = true) }
                 return requireNotNull(reader.getFrameAtTime(400_000, MediaMetadataRetriever.OPTION_CLOSEST))
             } finally { reader.release() }
         } finally {

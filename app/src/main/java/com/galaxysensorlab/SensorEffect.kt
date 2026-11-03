@@ -114,7 +114,8 @@ private class SensorProgram(
                 vec3 c = sensor(vUv);
                 vec3 avg = (sensor(vUv + vec2(uPixel.x,0.0)) + sensor(vUv - vec2(uPixel.x,0.0))
                           + sensor(vUv + vec2(0.0,uPixel.y)) + sensor(vUv - vec2(0.0,uPixel.y))) * 0.25;
-                float edge = smoothstep(0.015, 0.12, length(c - avg));
+                float expectedSigma = sqrt(max(dot(uShot * max(c, 0.0) + uRead, vec3(0.333333)), 0.0)) * uNoise;
+                float edge = smoothstep(0.015 + expectedSigma, 0.12 + 2.0 * expectedSigma, length(c - avg));
                 c = mix(c, avg, uDenoise * (1.0 - edge) * 0.85);
                 c += (c - avg) * uSharpness * 0.7;
                 c *= exp2(uExposure);
