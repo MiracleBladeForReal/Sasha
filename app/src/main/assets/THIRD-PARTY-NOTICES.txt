@@ -1,0 +1,33 @@
+Galaxy Sensor Lab Grain 0.3
+This Grain edition is distributed under GNU GPL version 3 or later.
+The separate Galaxy Sensor Lab 0.2 branch (main) is unchanged.
+
+darktable camera noise profile data:
+Copyright the darktable project and profile contributors, as attributed in the JSON.
+License: GPL-3.0-or-later.
+Source: https://github.com/darktable-org/darktable
+Pinned commit: 879067695ea85f42d238a5c1603a021d14d71d3f
+File: data/noiseprofiles.json
+Original Git blob: 086a62784df9e660a9cdcfc96d15c5302522502e
+The numerical coefficients and contributor comments are retained.
+Catalog adaptation: first published measurement is used when an ISO occurs more than once.
+a and b describe variance in normalized linear camera RAW: max(a * signal + b, 0).
+No darktable denoising implementation is included; this app uses its own video shader.
+Applying RAW sensor parameters to decoded video is an approximation.
+
+SIDD Galaxy S6 Edge data:
+Abdelrahman Abdelhamed, Stephen Lin, Michael S. Brown, CVPR 2018.
+License: MIT; see SIDD-LICENSE.txt.
+https://abdokamel.github.io/sidd/
+S6 coefficient data remains unchanged from Galaxy Sensor Lab 0.2.
+
+AndroidX Media3, Compose, Activity and Lifecycle:
+Copyright The Android Open Source Project. Apache License 2.0.
+https://www.apache.org/licenses/LICENSE-2.0
+https://github.com/androidx/media
+
+Corresponding source for this APK is available through the Code source button
+in the app, which links to its exact build commit. The original complete
+darktable JSON and all notices are included in the source and APK.
+No warranty; see the included GPL and third-party license notices.
+

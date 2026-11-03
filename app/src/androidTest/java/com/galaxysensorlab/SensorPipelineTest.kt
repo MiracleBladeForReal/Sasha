@@ -50,8 +50,40 @@ class SensorPipelineTest {
         assertTrue(calibration.sigma(3200f, 0.18f) > calibration.sigma(100f, 0.18f))
     }
 
+    @Test fun darktableCatalogRetainsCoefficientsAndBounds() {
+        assertEquals(439, calibration.cameras.size)
+        val id = "darktable:Canon:EOS R6"
+        val point = calibration.at(800f, id)
+        assertEquals(0.00000425892075056399f, point.shot[1], 1e-12f)
+        assertEquals(9.20342702749297e-9f, point.read[1], 1e-15f)
+        val a = calibration.at(100f, id)
+        val b = calibration.at(200f, id)
+        val mid = calibration.at(150f, id)
+        assertEquals((a.shot[1]+b.shot[1])*0.5f, mid.shot[1], 1e-12f)
+        assertEquals(a.shot[1], calibration.at(1f,id).shot[1], 0f)
+        assertTrue(calibration.search("oneplus nord 3").any { it.model == "OnePlus Nord 3 5G" })
+        assertTrue(calibration.search("samsung nx1").any { it.model == "NX1" })
+        assertEquals(NoiseCalibration.DEFAULT_PROFILE, calibration.profile("missing").id)
+        for (camera in calibration.cameras) {
+            assertTrue(camera.points.zipWithNext().all { (p,q) -> p.iso < q.iso })
+            assertTrue(calibration.sigma(camera.minIso, 0f, camera.id).isFinite())
+            assertTrue(calibration.sigma(camera.maxIso, 0.18f, camera.id).isFinite())
+        }
+    }
+
+    @Test fun cameraSelectionChangesTheActualExportNoise() {
+        val input = createInput(flat = true)
+        val baseSettings = LabSettings(noise = 0f)
+        val base = render(input, baseSettings)
+        val s6 = render(input, baseSettings.copy(noise = 1.5f, iso = 800f, grainChroma = 0f))
+        val canon = render(input, baseSettings.copy(profileId = "darktable:Canon:EOS R6", noise = 1.5f, iso = 800f, grainChroma = 0f))
+        assertTrue("Camera selection must change exported pixels, not only labels",
+            meanDifference(base,s6) > meanDifference(base,canon) + 3)
+        base.recycle(); s6.recycle(); canon.recycle(); input.delete()
+    }
+
     @Test fun settingsSurviveSavingWithoutPreviewBypass() {
-        val original = LabSettings(iso = 1600f, noise = 1.2f, exposure = -1f, denoise = 0.4f,
+        val original = LabSettings(profileId = "darktable:Canon:EOS R6", iso = 6400f, noise = 1.2f, exposure = -1f, denoise = 0.4f,
             naturalGrain = false, grainSize = 8.5f, grainLuma = 0.4f, grainChroma = 0.8f,
             grainSoftness = 0.3f, grainRate = 12f,
             compare = true, original = true)

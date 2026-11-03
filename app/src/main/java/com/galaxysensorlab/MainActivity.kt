@@ -10,6 +10,8 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -65,6 +67,9 @@ private fun LabScreen(model: LabViewModel) {
         uri?.let { model.export(it) }
     }
     var showSource by remember { mutableStateOf(false) }
+    var showProfiles by remember { mutableStateOf(false) }
+    var showLicenses by remember { mutableStateOf(false) }
+    val camera = model.calibration.profile(settings.profileId)
     val ready = model.videoUri != null && !model.busy
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
@@ -119,7 +124,7 @@ private fun LabScreen(model: LabViewModel) {
                             label = { Text("Originale") }, enabled = ready)
                         FilterChip(selected = settings.compare, onClick = { model.update(settings.copy(compare = !settings.compare, original = false)) },
                             label = { Text("Prima / dopo") }, enabled = ready)
-                        TextButton(onClick = { model.update(LabSettings(noise = 0f)) }, enabled = ready) { Text("Azzera") }
+                        TextButton(onClick = { model.update(LabSettings(noise = 0f, profileId = camera.id, iso = settings.iso)) }, enabled = ready) { Text("Azzera") }
                     }
                     if (settings.compare && !settings.original) {
                         LabSlider("Linea di confronto", settings.split, 0.05f..0.95f, "${(settings.split * 100).roundToInt()}%", ready) {
@@ -131,11 +136,13 @@ private fun LabScreen(model: LabViewModel) {
                     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                             Text("PROFILO DI RUMORE", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
-                            Text("Samsung Galaxy S6 Edge", style = MaterialTheme.typography.titleMedium)
-                            Text("Coefficienti DNG pubblicati nel dataset SIDD. Applicazione approssimata a video già elaborati.",
+                            Text(camera.displayName, style = MaterialTheme.typography.titleMedium)
+                            Text("${camera.dataset} · ISO ${camera.minIso.toInt()}–${camera.maxIso.toInt()}. Applicazione approssimata a video già elaborati.",
                                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text("Telefono: ${Build.MANUFACTURER} ${Build.MODEL}", style = MaterialTheme.typography.labelSmall)
-                            TextButton(onClick = { showSource = true }, contentPadding = PaddingValues(0.dp)) { Text("Dati e fonte GitHub") }
+                            OutlinedButton(onClick = { showProfiles = true }, enabled = !model.busy,
+                                modifier = Modifier.fillMaxWidth()) { Text("Scegli fotocamera") }
+                            TextButton(onClick = { showSource = true }, contentPadding = PaddingValues(0.dp)) { Text("Dati, fonte e licenze") }
                         }
                     }
                 }
@@ -148,21 +155,24 @@ private fun LabScreen(model: LabViewModel) {
                                     "Pulito" -> LabSettings(iso = 100f, noise = 0f, denoise = 0.35f)
                                     "Notte" -> LabSettings(iso = 3200f, noise = 0.9f, exposure = -0.4f, warmth = -0.2f, grainSize = 1.5f, grainChroma = 0.35f)
                                     else -> LabSettings(iso = 800f, noise = 0.45f, warmth = 0.18f, saturation = 0.8f, contrast = 1.15f, vignette = 0.3f, grainSize = 4f, grainChroma = 0.08f)
-                                })
+                                }.copy(profileId = camera.id))
                             }, enabled = ready, modifier = Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 6.dp)) { Text(name) }
                         }
                     }
                 }
                 item {
                     SectionLabel("01 / SENSORE")
-                    LabSlider("ISO simulato", (ln(settings.iso / 100f) / ln(2f)), 0f..5f,
-                        settings.iso.roundToInt().toString(), ready, steps = 4) {
-                        model.update(settings.copy(iso = 100f * 2f.pow(it.roundToInt())))
+                    val logRange = ln(camera.maxIso / camera.minIso) / ln(2f)
+                    val isS6 = camera.id == NoiseCalibration.DEFAULT_PROFILE
+                    LabSlider("ISO simulato", ln(settings.iso.coerceIn(camera.minIso, camera.maxIso) / camera.minIso) / ln(2f),
+                        0f..logRange, settings.iso.roundToInt().toString(), ready, steps = if (isS6) 4 else 0) {
+                        val logIso = if (isS6) it.roundToInt().toFloat() else it
+                        model.update(settings.copy(iso = (camera.minIso * 2f.pow(logIso)).roundToInt().toFloat()))
                     }
                     LabSlider("Intensità rumore", settings.noise, 0f..2f, percent(settings.noise), ready) {
                         model.update(settings.copy(noise = it))
                     }
-                    Text("Scala base SIDD sul grigio 18%: σ = ${format(model.calibration.sigma(settings.iso, 0.18f) * settings.noise * 100f)}%",
+                    Text("Scala base ${camera.dataset} sul grigio 18%: σ = ${format(model.calibration.sigma(settings.iso, 0.18f, camera.id) * settings.noise * 100f)}%",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 item {
@@ -171,14 +181,14 @@ private fun LabScreen(model: LabViewModel) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f)) {
                                     Text("Grana naturale", style = MaterialTheme.typography.titleMedium)
-                                    Text(if (settings.naturalGrain) "Attiva · disegno più organico" else "Spenta · rumore SIDD classico",
+                                    Text(if (settings.naturalGrain) "Attiva · disegno più organico" else "Spenta · rumore classico",
                                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                                 Switch(checked = settings.naturalGrain, onCheckedChange = {
                                     model.update(settings.copy(naturalGrain = it))
                                 }, enabled = ready)
                             }
-                            Text("Il profilo Galaxy S6 Edge e i coefficienti ISO restano gli stessi in entrambe le modalità.",
+                            Text("Il profilo selezionato e i suoi coefficienti ISO restano gli stessi in entrambe le modalità.",
                                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             if (settings.naturalGrain) {
                                 LabSlider("Dimensione grana", settings.grainSize, 0.5f..12f,
@@ -258,23 +268,43 @@ private fun LabScreen(model: LabViewModel) {
                     }
                 } }
                 item {
-                    Text("Laboratorio sperimentale · elaborazione locale\nIl profilo S6 non calibra automaticamente il tuo modello e non ricostruisce il RAW o l’ISP proprietario Samsung.",
+                    Text("Laboratorio sperimentale · elaborazione locale\nIl profilo selezionato non calibra automaticamente il video e non ricostruisce RAW o ISP della fotocamera.",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
     }
-    if (showSource) AlertDialog(onDismissRequest = { showSource = false }, title = { Text("Dati reali, limiti chiari") },
-        text = { Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            val point = model.calibration.at(settings.iso)
-            Text("SIDD · Abdelhamed, Lin e Brown · CVPR 2018. Licenza MIT. Galaxy S6 Edge, ISO 100, 200, 400, 800, 1600 e 3200.")
-            Text("Varianza RAW = β₁ × segnale + β₂. Verde: β₁ = ${point.shot[1]}, β₂ = ${point.read[1]}. I valori nulli di β₂ sono quelli pubblicati.")
-            Text("La modalità naturale modifica dimensione e correlazione della grana con regolazioni creative. Un MP4 contiene già rumore, compressione e sviluppo. Questa è una simulazione aggiuntiva in RGB lineare, non una misura del video originale né un’emulazione completa del sensore.")
+    if (showProfiles) CameraPicker(model.calibration, camera.id,
+        onSelect = { selected -> model.update(settings.copy(profileId = selected.id)); showProfiles = false },
+        onDismiss = { showProfiles = false })
+    if (showSource) AlertDialog(onDismissRequest = { showSource = false }, title = { Text("Dati del profilo") },
+        text = { Column(Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            val point = model.calibration.at(settings.iso, camera.id)
+            Text("${camera.displayName} · ${camera.dataset} · ${camera.license}")
+            Text(camera.attribution)
+            Text("ISO pubblicati: ${camera.points.joinToString { it.iso.toInt().toString() }}")
+            Text("Varianza RAW = a × segnale + b. Verde: a = ${point.shot[1]}, b = ${point.read[1]}.")
+            Text(if (camera.dataset == "SIDD") "I coefficienti originali S6 Edge sono conservati, compresi i valori nulli di b."
+                 else "Coefficienti RGB darktable originali. ISO intermedi interpolati linearmente; niente estrapolazione. In presenza di più misure allo stesso ISO usiamo la prima pubblicata. I valori b negativi sono conservati: si limita a zero solo la varianza risultante.")
+            Text("La modalità naturale modifica dimensione e correlazione della grana con regolazioni creative. Applicare un profilo RAW a un MP4 già elaborato è un’approssimazione, non una replica della fotocamera.")
+            TextButton(onClick = { showSource = false; showLicenses = true }) { Text("Licenze e codice sorgente") }
         } },
         confirmButton = { TextButton(onClick = {
-            runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(model.calibration.source))) }
-        }) { Text("Apri GitHub") } },
+            runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(camera.source))) }
+        }) { Text("Apri fonte") } },
         dismissButton = { TextButton(onClick = { showSource = false }) { Text("Chiudi") } })
+    if (showLicenses) {
+        val licenseText = remember { context.assets.open("THIRD-PARTY-NOTICES.txt").bufferedReader().use { it.readText() } +
+            "\n\n" + context.assets.open("LICENSE-GPL-3.0.txt").bufferedReader().use { it.readText() } }
+        AlertDialog(onDismissRequest = { showLicenses = false }, title = { Text("Licenze · edizione Grain") },
+            text = { Text(licenseText, modifier = Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState()),
+                style = MaterialTheme.typography.bodySmall) },
+            confirmButton = { TextButton(onClick = {
+                runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(
+                    "https://github.com/MiracleBladeForReal/Sasha/tree/${BuildConfig.SOURCE_COMMIT}"))) }
+            }) { Text("Codice sorgente") } },
+            dismissButton = { TextButton(onClick = { showLicenses = false }) { Text("Chiudi") } })
+    }
 }
 
 @Composable

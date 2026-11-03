@@ -9,7 +9,10 @@ Laboratorio video Android con elaborazione GPU reale, anteprima e salvataggio MP
 ## Funzioni
 
 - Importazione tramite selettore Android, con permesso persistente sul file.
-- Profilo SIDD Galaxy S6 Edge e coefficienti ISO originali conservati senza modifiche.
+- Profilo SIDD Galaxy S6 Edge e coefficienti ISO originali conservati senza modifiche e predefiniti.
+- Selettore con ricerca per **439 fotocamere**: S6 Edge SIDD + 438 modelli del catalogo darktable. Include Canon, Nikon, Sony, Fujifilm, Olympus, Panasonic, Pentax, Samsung NX e altri; fra i telefoni sono presenti anche OnePlus Nord 3 5G, ONEPLUS A6003 e LG Nexus 5/5X. La selezione cambia i coefficienti RGB usati realmente da anteprima ed esportazione.
+- Gamma ISO adattata al profilo scelto. SIDD mantiene la precedente interpolazione log ISO; darktable usa interpolazione lineare dei coefficienti in ISO, senza estrapolare. Dove lo stesso ISO ha più misurazioni si usa la prima pubblicata, mantenendo il file originale completo per verificabilità.
+- Profili conservati con modello, fonte, contributori, licenza e collegamento alla sorgente GitHub esatta. Il selettore non identifica automaticamente la fotocamera che ha ripreso il video.
 - Interruttore **Grana naturale**, con dimensione 0.5–12 px riferiti a 1080p, intensità luminanza e colore separate, morbidezza e frequenza di rinnovo 1–60 disegni/secondo.
 - Modalità classica SIDD disponibile spegnendo Grana naturale.
 - La grana naturale usa campi gaussiani spazialmente correlati; normalizza i pesi di interpolazione per contenere variazioni di ampiezza dovute alla dimensione. La crominanza ha una scala leggermente maggiore e la sua componente di luminanza viene sottratta.
@@ -34,9 +37,15 @@ Android 8.0 o successivo. APK di sviluppo: le chiavi debug possono cambiare fra 
 
 Importa una clip locale, riproducila, cambia un cursore e attiva **Prima / dopo**. Con **Originale** vedi il bypass; disattivalo per vedere gli effetti. **Azzera** ripristina una pipeline neutra senza rumore aggiunto. **Salva video elaborato** apre il selettore Android per scegliere nome e destinazione. Il confronto non viene impresso nell’esportazione: si esporta sempre il fotogramma interamente elaborato. Tieni l’app aperta durante il rendering. Video HDR vengono convertiti in SDR in esportazione; la resa può differire dall’anteprima HDR. Compatibilità codec e prestazioni dipendono dal telefono; se necessario prova 720p e una sorgente MP4 H.264 SDR.
 
+## Catalogo darktable e licenze
+
+Il file `app/src/main/assets/darktable-noiseprofiles.json` proviene da [darktable, commit 879067695ea85f42d238a5c1603a021d14d71d3f](https://github.com/darktable-org/darktable/blob/879067695ea85f42d238a5c1603a021d14d71d3f/data/noiseprofiles.json), blob Git `086a62784df9e660a9cdcfc96d15c5302522502e`. Contiene 438 modelli e coefficienti per ISO e canale. Si importano `a` come coefficiente del segnale e `b` come intercetta della **varianza**, senza elevarli al quadrato. Si conserva l’eventuale `b` negativo e si limita a zero soltanto la varianza risultante: `sigma = sqrt(max(a * signal + b, 0))`. Sono dati per RAW lineare, non per il video già sviluppato.
+
+La sola nuova edizione **Grain** viene distribuita sotto **GPL-3.0-or-later**, con licenza completa nel repository e nell’APK, attribuzioni darktable e collegamento al codice del commit esatto che ha prodotto l’APK. Dati SIDD: MIT. AndroidX/Media3: Apache 2.0. La versione 0.2 su `main` resta intatta e non viene rilicenziata da questa modifica. Nell’app: **Dati, fonte e licenze → Licenze e codice sorgente**.
+
 ## Calibrazione e limiti scientifici
 
-Il profilo è **Samsung Galaxy S6 Edge**, non una calibrazione automatica del telefono su cui gira l’app. È basato sulla tabella DNG NLF di [SIDD](https://abdokamel.github.io/sidd/), Abdelhamed, Lin, Brown, CVPR 2018, distribuita con licenza MIT.
+Il profilo predefinito è **Samsung Galaxy S6 Edge**, non una calibrazione automatica del telefono su cui gira l’app; può essere cambiato dal selettore. È basato sulla tabella DNG NLF di [SIDD](https://abdokamel.github.io/sidd/), Abdelhamed, Lin, Brown, CVPR 2018, distribuita con licenza MIT.
 
 Fonte fissata al commit [7759f112](https://github.com/AbdoKamel/abdokamel.github.io/blob/7759f112db725fb68cf89c28432cfd2baea90cb0/sidd/files/noise_level_functions.csv). Il JSON `app/src/main/assets/sidd_s6.json` contiene una riga rappresentativa per ISO 100, 200, 400, 800, 1600 e 3200, identificativo della scena e coefficienti RGB originali. Gli ISO intermedi usano interpolazione in log ISO; fuori intervallo non si estrapola. Per S6 tutti i beta2 pubblicati sono zero: l’app li conserva, senza inventare coefficienti di lettura.
 
@@ -48,6 +57,6 @@ L’esportazione richiede 8 Mbps fino a 720p e 16 Mbps oltre 720p per preservare
 
 ## Verifica automatica
 
-La pipeline compila APK e test, esegue Android lint e avvia un emulatore Android 15. I test strumentali verificano i coefficienti pubblicati e producono veri MP4 attraverso codec e shader GL: esposizione e rumore devono cambiare i pixel estratti dal file; bypass e metà originale del confronto devono preservarli. Verificano anche durata e decodifica dei file. Una prova apre anche l’app, riproduce una clip ed esporta dal modello applicativo; acquisisce una schermata per la verifica visiva. Sono aggiunte prove su dimensione e componente colore della grana, rinnovo nel tempo e ripristino della modalità classica. I report sono artefatti della build. L’emulatore non sostituisce le prove su un Samsung fisico, specialmente per HEVC/HDR, file lunghi e stabilità termica.
+La pipeline compila APK e test, esegue Android lint e avvia un emulatore Android 15. I test strumentali verificano i coefficienti pubblicati e producono veri MP4 attraverso codec e shader GL: esposizione e rumore devono cambiare i pixel estratti dal file; bypass e metà originale del confronto devono preservarli. Verificano anche durata e decodifica dei file. Una prova apre anche l’app, riproduce una clip ed esporta dal modello applicativo; acquisisce una schermata per la verifica visiva. Sono aggiunte prove su dimensione e componente colore della grana, rinnovo nel tempo e ripristino della modalità classica, catalogo darktable e coefficienti di riferimento, cambiamento dei pixel esportati al cambio fotocamera e selezione reale tramite interfaccia (Nord 3 → S6 Edge). I report sono artefatti della build. L’emulatore non sostituisce le prove su un Samsung fisico, specialmente per HEVC/HDR, file lunghi e stabilità termica.
 
 Stack: Kotlin 2.0.21, Compose, Media3 1.5.1, Java 17, Gradle 8.9, AGP 8.7.3, SDK 35. GitHub Actions si avvia a ogni push su natural-grain-v0.3, pull request o tramite Run workflow.

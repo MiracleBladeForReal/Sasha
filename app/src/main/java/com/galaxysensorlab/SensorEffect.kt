@@ -40,7 +40,7 @@ private class SensorProgram(
     override fun drawFrame(inputTexId: Int, presentationTimeUs: Long) {
         try {
             val s = effect.settings
-            val n = calibration.at(s.iso)
+            val n = calibration.at(s.iso, s.profileId)
             program.use()
             program.setSamplerTexIdUniform("uTex", inputTexId, 0)
             program.setFloatsUniform("uPixel", floatArrayOf(1f / width, 1f / height))

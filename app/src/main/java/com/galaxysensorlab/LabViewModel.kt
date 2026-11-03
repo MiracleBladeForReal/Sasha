@@ -83,9 +83,11 @@ class LabViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun update(value: LabSettings) {
-        settings = value
-        effect.settings = value
-        prefs.edit().putString("settings", value.toJson()).apply()
+        val camera = calibration.profile(value.profileId)
+        val safe = value.copy(profileId = camera.id, iso = value.iso.coerceIn(camera.minIso, camera.maxIso))
+        settings = safe
+        effect.settings = safe
+        prefs.edit().putString("settings", safe.toJson()).apply()
         refreshJob?.cancel()
         refreshJob = viewModelScope.launch {
             delay(100)
