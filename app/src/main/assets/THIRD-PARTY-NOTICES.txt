@@ -1,5 +1,5 @@
-Galaxy Sensor Lab Edge Capture 0.4
-This Edge Capture edition is distributed under GNU GPL version 3 or later.
+Galaxy Sensor Lab Edge Sensor 0.5
+This Edge Sensor edition is distributed under GNU GPL version 3 or later.
 The separate Galaxy Sensor Lab 0.2 branch (main) is unchanged.
 
 darktable camera noise profile data:

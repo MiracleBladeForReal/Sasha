@@ -1,0 +1,26 @@
+name: Verify original S6 Edge video reference
+on:
+  push:
+    branches: [edge-capture-v0.4]
+    paths:
+      - tools/audit_original_reference.py
+      - .github/workflows/reference-audit.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  original-reference:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install video inspection tools
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Download and decode publisher-linked original
+        run: python3 tools/audit_original_reference.py
+      - name: Upload reproducible reference audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: S6-Edge-original-reference-audit
+          path: reference-audit.json
+          if-no-files-found: error

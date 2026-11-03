@@ -5,72 +5,25 @@ import org.json.JSONObject
 import kotlin.math.ln
 import kotlin.math.sqrt
 
+/** Only measured profile selection, target ISO, realization, and comparison state. */
 data class LabSettings(
     val profileId: String = "sidd:s6",
     val iso: Float = 800f,
-    val noise: Float = 0.7f,
-    val captureMode: Boolean = true,
     val noiseSeed: Int = 0,
-    val readNoise: Float = 0.001f,
-    val shadowGain: Float = 1.2f,
-    val highlightProtect: Float = 0.5f,
-    val temporalCoherence: Float = 0.35f,
-    val naturalGrain: Boolean = true,
-    val grainSize: Float = 2f,
-    val grainLuma: Float = 1f,
-    val grainChroma: Float = 0.15f,
-    val grainSoftness: Float = 0.85f,
-    val grainRate: Float = 24f,
-    val exposure: Float = 0f,
-    val warmth: Float = 0f,
-    val saturation: Float = 1f,
-    val contrast: Float = 1f,
-    val denoise: Float = 0f,
-    val sharpness: Float = 0f,
-    val vignette: Float = 0f,
     val compare: Boolean = false,
     val original: Boolean = false,
     val split: Float = 0.5f
 ) {
     fun toJson(): String = JSONObject().apply {
-        put("captureMode", captureMode); put("noiseSeed", noiseSeed)
-        put("readNoise", readNoise); put("shadowGain", shadowGain)
-        put("highlightProtect", highlightProtect); put("temporalCoherence", temporalCoherence)
-        put("profileId", profileId); put("iso", iso); put("noise", noise); put("exposure", exposure)
-        put("naturalGrain", naturalGrain); put("grainSize", grainSize)
-        put("grainLuma", grainLuma); put("grainChroma", grainChroma)
-        put("grainSoftness", grainSoftness); put("grainRate", grainRate)
-        put("warmth", warmth); put("saturation", saturation); put("contrast", contrast)
-        put("denoise", denoise); put("sharpness", sharpness); put("vignette", vignette)
+        put("schema", 2); put("profileId", profileId); put("iso", iso); put("noiseSeed", noiseSeed)
     }.toString()
-
     companion object {
         fun fromJson(text: String): LabSettings {
             val j = JSONObject(text)
-            return LabSettings(
-                profileId = j.optString("profileId", "sidd:s6"),
-                captureMode = j.optBoolean("captureMode", true),
-                noiseSeed = j.optInt("noiseSeed", 0).coerceIn(0, 1_048_575),
-                readNoise = j.optDouble("readNoise", 0.001).toFloat().coerceIn(0f, 0.02f),
-                shadowGain = j.optDouble("shadowGain", 1.2).toFloat().coerceIn(0f, 3f),
-                highlightProtect = j.optDouble("highlightProtect", 0.5).toFloat().coerceIn(0f, 1f),
-                temporalCoherence = j.optDouble("temporalCoherence", 0.35).toFloat().coerceIn(0f, 1f),
-                iso = j.optDouble("iso", 800.0).toFloat().coerceIn(1f, 10_000_000f),
-                noise = j.optDouble("noise", 0.7).toFloat().coerceIn(0f, 2f),
-                naturalGrain = j.optBoolean("naturalGrain", true),
-                grainSize = j.optDouble("grainSize", 2.0).toFloat().coerceIn(0.5f, 12f),
-                grainLuma = j.optDouble("grainLuma", 1.0).toFloat().coerceIn(0f, 1.5f),
-                grainChroma = j.optDouble("grainChroma", 0.15).toFloat().coerceIn(0f, 1.5f),
-                grainSoftness = j.optDouble("grainSoftness", 0.85).toFloat().coerceIn(0f, 1f),
-                grainRate = j.optDouble("grainRate", 24.0).toFloat().coerceIn(1f, 60f),
-                exposure = j.optDouble("exposure", 0.0).toFloat().coerceIn(-3f, 3f),
-                warmth = j.optDouble("warmth", 0.0).toFloat().coerceIn(-1f, 1f),
-                saturation = j.optDouble("saturation", 1.0).toFloat().coerceIn(0f, 2f),
-                contrast = j.optDouble("contrast", 1.0).toFloat().coerceIn(0.5f, 1.5f),
-                denoise = j.optDouble("denoise", 0.0).toFloat().coerceIn(0f, 1f),
-                sharpness = j.optDouble("sharpness", 0.0).toFloat().coerceIn(0f, 1f),
-                vignette = j.optDouble("vignette", 0.0).toFloat().coerceIn(0f, 1f)
-            )
+            // Old creative settings are deliberately discarded, never applied invisibly.
+            return LabSettings(profileId = j.optString("profileId", "sidd:s6"),
+                iso = j.optDouble("iso", 800.0).toFloat().takeIf { it.isFinite() }?.coerceIn(1f,10_000_000f) ?: 800f,
+                noiseSeed = j.optInt("noiseSeed",0).coerceIn(0,1_048_575))
         }
     }
 }

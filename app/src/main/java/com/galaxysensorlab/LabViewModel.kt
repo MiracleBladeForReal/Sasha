@@ -3,6 +3,8 @@ package com.galaxysensorlab
 import android.app.Application
 import android.content.Intent
 import android.media.MediaMetadataRetriever
+import android.media.MediaExtractor
+import android.media.MediaFormat
 import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.compose.runtime.getValue
@@ -16,7 +18,6 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.effect.Presentation
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.transformer.DefaultEncoderFactory
 import androidx.media3.transformer.VideoEncoderSettings
@@ -69,8 +70,7 @@ class LabViewModel(application: Application) : AndroidViewModel(application) {
         private set
     var resultUri by mutableStateOf<Uri?>(null)
         private set
-    var exportHeight by mutableStateOf(1080)
-    private var sourceHeight = 1080
+    private var sourcePixels = 1920 * 1080
     private var transformer: Transformer? = null
     private var outputFile: File? = null
     private var destination: Uri? = null
@@ -79,7 +79,7 @@ class LabViewModel(application: Application) : AndroidViewModel(application) {
     private var loadJob: Job? = null
 
     init {
-        if (!prefs.contains("settings")) update(settings.copy(noiseSeed = NoiseSeeds.next()))
+        update(if (!prefs.contains("settings")) settings.copy(noiseSeed = NoiseSeeds.next()) else settings)
         prefs.getString("video", null)?.let { loadVideo(Uri.parse(it), newRealization = false) }
     }
 
@@ -89,7 +89,7 @@ class LabViewModel(application: Application) : AndroidViewModel(application) {
 
     fun update(value: LabSettings) {
         val camera = calibration.profile(value.profileId)
-        val safe = value.copy(profileId = camera.id, iso = value.iso.coerceIn(camera.minIso, camera.maxIso))
+        val safe = value.copy(profileId = camera.id, iso = camera.points.minBy { kotlin.math.abs(it.iso - value.iso) }.iso)
         settings = safe
         effect.settings = safe
         prefs.edit().putString("settings", safe.toJson()).apply()
@@ -117,6 +117,19 @@ class LabViewModel(application: Application) : AndroidViewModel(application) {
             }
             try {
                 val info = withContext(Dispatchers.IO) {
+                    val extractor=MediaExtractor()
+                    try {
+                        extractor.setDataSource(getApplication<Application>(),uri,null)
+                        for(index in 0 until extractor.trackCount) {
+                            val format=extractor.getTrackFormat(index)
+                            if(format.getString(MediaFormat.KEY_MIME)?.startsWith("video/")==true && format.containsKey(MediaFormat.KEY_COLOR_TRANSFER)) {
+                                val transfer=format.getInteger(MediaFormat.KEY_COLOR_TRANSFER)
+                                require(transfer != MediaFormat.COLOR_TRANSFER_ST2084 && transfer != MediaFormat.COLOR_TRANSFER_HLG) {
+                                    "Video HDR: importa una clip SDR. Non applichiamo conversioni di luminosità automatiche."
+                                }
+                            }
+                        }
+                    } finally { extractor.release() }
                     val app = getApplication<Application>()
                     val name = app.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
                         ?.use { if (it.moveToFirst()) it.getString(0) else "Video" } ?: "Video"
@@ -126,16 +139,14 @@ class LabViewModel(application: Application) : AndroidViewModel(application) {
                         val w = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 0
                         val h = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 0
                         require(w > 0 && h > 0) { "Il file non contiene una traccia video." }
-                        val rotation = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0
                         val duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
-                        val displayHeight = if (rotation % 180 == 0) h else w
-                        Triple(name, "${w} × ${h} · ${duration / 1000}s", displayHeight)
+                        Triple(name, "${w} × ${h} · ${duration / 1000}s", w * h)
                     } finally { retriever.release() }
                 }
                 videoUri = uri
                 videoName = info.first
                 videoInfo = info.second
-                sourceHeight = info.third
+                sourcePixels = info.third
                 resultUri = null
                 message = null
                 if (newRealization) newTake()
@@ -145,7 +156,7 @@ class LabViewModel(application: Application) : AndroidViewModel(application) {
                 prefs.edit().putString("video", uri.toString()).apply()
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
-                message = "Non riesco ad aprire il video. Seleziona un file locale leggibile."
+                message = if (e is IllegalArgumentException && e.message?.startsWith("Video HDR:") == true) e.message else "Non riesco ad aprire il video. Seleziona un file SDR locale leggibile."
             }
         }
     }
@@ -161,16 +172,14 @@ class LabViewModel(application: Application) : AndroidViewModel(application) {
         outputFile = file
         val exportSettings = settings.copy(original = false, compare = false)
         val effects = mutableListOf<Effect>(SensorEffect(calibration, exportSettings))
-        val targetHeight = minOf(sourceHeight, exportHeight).coerceAtLeast(2)
-        effects.add(Presentation.createForHeight(targetHeight - targetHeight % 2))
         val edited = EditedMediaItem.Builder(MediaItem.fromUri(input))
             .setEffects(Effects(emptyList(), effects)).build()
         val composition = Composition.Builder(EditedMediaItemSequence.Builder(edited).build())
-            .setHdrMode(Composition.HDR_MODE_TONE_MAP_HDR_TO_SDR_USING_OPEN_GL).build()
+            .setHdrMode(Composition.HDR_MODE_KEEP_HDR).build()
         try {
             val encoderFactory = DefaultEncoderFactory.Builder(app)
                 .setRequestedVideoEncoderSettings(VideoEncoderSettings.Builder()
-                    .setBitrate(if (targetHeight > 720) 16_000_000 else 8_000_000).build()).build()
+                    .setBitrate(if (sourcePixels > 1920 * 1080) 48_000_000 else 16_000_000).build()).build()
             val worker = Transformer.Builder(app)
                 .setEncoderFactory(encoderFactory)
                 .setVideoMimeType(MimeTypes.VIDEO_H264)
@@ -200,7 +209,7 @@ class LabViewModel(application: Application) : AndroidViewModel(application) {
                     }
                     override fun onError(composition: Composition, exportResult: ExportResult, exportException: ExportException) {
                         cleanupExport()
-                        message = "Esportazione non riuscita (${exportException.errorCode}). Prova 720p o un video SDR."
+                        message = "Esportazione non riuscita (${exportException.errorCode}). Prova un MP4 H.264 SDR compatibile con il codec del telefono."
                     }
                 }).build()
             transformer = worker
