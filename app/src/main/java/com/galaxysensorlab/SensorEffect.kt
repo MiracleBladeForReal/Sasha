@@ -1,0 +1,132 @@
+package com.galaxysensorlab
+
+import android.content.Context
+import android.opengl.GLES20
+import androidx.media3.common.VideoFrameProcessingException
+import androidx.media3.common.util.GlProgram
+import androidx.media3.common.util.GlUtil
+import androidx.media3.common.util.Size
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.effect.BaseGlShaderProgram
+import androidx.media3.effect.GlEffect
+import androidx.media3.effect.GlShaderProgram
+
+/** Same GPU effect for preview and export. Settings are read atomically once per frame. */
+@UnstableApi
+class SensorEffect(private val calibration: NoiseCalibration, initial: LabSettings) : GlEffect {
+    @Volatile var settings = initial
+
+    override fun toGlShaderProgram(context: Context, useHdr: Boolean): GlShaderProgram =
+        try { SensorProgram(calibration, this, useHdr) }
+        catch (e: GlUtil.GlException) { throw VideoFrameProcessingException(e) }
+}
+
+@UnstableApi
+private class SensorProgram(
+    private val calibration: NoiseCalibration,
+    private val effect: SensorEffect,
+    useHdr: Boolean
+) : BaseGlShaderProgram(useHdr, 1) {
+    private val program = GlProgram(VERTEX, FRAGMENT)
+    private var width = 1
+    private var height = 1
+    init { program.setBufferAttribute("aFramePosition", GlUtil.getNormalizedCoordinateBounds(), 4) }
+
+    override fun configure(inputWidth: Int, inputHeight: Int): Size {
+        width = inputWidth; height = inputHeight
+        return Size(width, height)
+    }
+
+    override fun drawFrame(inputTexId: Int, presentationTimeUs: Long) {
+        try {
+            val s = effect.settings
+            val n = calibration.at(s.iso)
+            program.use()
+            program.setSamplerTexIdUniform("uTex", inputTexId, 0)
+            program.setFloatsUniform("uPixel", floatArrayOf(1f / width, 1f / height))
+            program.setFloatsUniform("uShot", n.shot)
+            program.setFloatsUniform("uRead", n.read)
+            program.setFloatUniform("uTime", (presentationTimeUs % 10_000_000L) / 1_000_000f)
+            program.setFloatUniform("uNoise", s.noise)
+            program.setFloatUniform("uExposure", s.exposure)
+            program.setFloatUniform("uWarmth", s.warmth)
+            program.setFloatUniform("uSaturation", s.saturation)
+            program.setFloatUniform("uContrast", s.contrast)
+            program.setFloatUniform("uDenoise", s.denoise)
+            program.setFloatUniform("uSharpness", s.sharpness)
+            program.setFloatUniform("uVignette", s.vignette)
+            program.setFloatUniform("uOriginal", if (s.original) 1f else 0f)
+            program.setFloatUniform("uSplit", if (s.compare) s.split else -1f)
+            program.bindAttributesAndUniforms()
+            GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
+            GlUtil.checkGlError()
+        } catch (e: GlUtil.GlException) { throw VideoFrameProcessingException(e, presentationTimeUs) }
+    }
+
+    override fun release() {
+        try { super.release() } finally {
+            try { program.delete() }
+            catch (e: GlUtil.GlException) { throw VideoFrameProcessingException(e) }
+        }
+    }
+
+    companion object {
+        private const val VERTEX = """
+            attribute vec4 aFramePosition;
+            varying vec2 vUv;
+            void main() {
+                gl_Position = aFramePosition;
+                vUv = aFramePosition.xy * 0.5 + 0.5;
+            }
+        """
+        private const val FRAGMENT = """
+            precision highp float;
+            uniform sampler2D uTex;
+            uniform vec2 uPixel;
+            uniform vec3 uShot;
+            uniform vec3 uRead;
+            uniform float uTime, uNoise, uExposure, uWarmth, uSaturation, uContrast;
+            uniform float uDenoise, uSharpness, uVignette, uOriginal, uSplit;
+            varying vec2 vUv;
+            float random(vec2 p, float seed) {
+                return fract(sin(dot(p, vec2(12.9898,78.233)) + seed) * 43758.5453);
+            }
+            float gaussian(vec2 p, float seed) {
+                float a = max(random(p, seed), 0.0001);
+                float b = random(p.yx + vec2(41.0,17.0), seed + 23.0);
+                return sqrt(-2.0 * log(a)) * cos(6.28318530718 * b);
+            }
+            vec3 sensor(vec2 uv) {
+                vec3 signal = max(texture2D(uTex, clamp(uv, 0.0, 1.0)).rgb, 0.0);
+                vec2 pixel = floor(uv / uPixel);
+                float frameSeed = floor(uTime * 1000.0) * 0.137;
+                vec3 g = vec3(gaussian(pixel, frameSeed), gaussian(pixel, frameSeed + 71.0),
+                              gaussian(pixel, frameSeed + 137.0));
+                // SIDD normalized RAW variance = beta1 * signal + beta2.
+                return signal + g * sqrt(max(uShot * signal + uRead, 0.0)) * uNoise;
+            }
+            void main() {
+                vec4 original = texture2D(uTex, vUv);
+                if (uOriginal > 0.5 || (uSplit >= 0.0 && vUv.x < uSplit)) {
+                    gl_FragColor = original;
+                    return;
+                }
+                vec3 c = sensor(vUv);
+                vec3 avg = (sensor(vUv + vec2(uPixel.x,0.0)) + sensor(vUv - vec2(uPixel.x,0.0))
+                          + sensor(vUv + vec2(0.0,uPixel.y)) + sensor(vUv - vec2(0.0,uPixel.y))) * 0.25;
+                float edge = smoothstep(0.015, 0.12, length(c - avg));
+                c = mix(c, avg, uDenoise * (1.0 - edge) * 0.85);
+                c += (c - avg) * uSharpness * 0.7;
+                c *= exp2(uExposure);
+                c *= vec3(1.0 + 0.25*uWarmth, 1.0, 1.0 - 0.25*uWarmth);
+                float luma = dot(c, vec3(0.2126, 0.7152, 0.0722));
+                c = mix(vec3(luma), c, uSaturation);
+                c = (c - 0.18) * uContrast + 0.18;
+                float radius = length((vUv - 0.5) * 1.41421356);
+                c *= 1.0 - uVignette * smoothstep(0.25, 0.75, radius) * 0.8;
+                if (uSplit >= 0.0 && abs(vUv.x - uSplit) < uPixel.x * 1.5) c = vec3(0.1, 0.8, 0.7);
+                gl_FragColor = vec4(clamp(c, 0.0, 1.0), original.a);
+            }
+        """
+    }
+}

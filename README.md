@@ -1,22 +1,43 @@
-# Galaxy Sensor Lab
+# Galaxy Sensor Lab 0.2
 
-Prototipo Android in Kotlin, Jetpack Compose e Media3: seleziona un video dal telefono e riproducilo nell’app.
+Laboratorio video Android con elaborazione GPU reale, anteprima e salvataggio MP4. Tutto avviene sul telefono, senza caricamenti in rete.
 
-Non sono ancora implementati il modello fisico del rumore dei sensori, l’emulazione Samsung ISP o l’esportazione video.
+## Funzioni
 
-## Scaricare e installare dal telefono
+- Importazione tramite selettore Android, con permesso persistente sul file.
+- Rumore temporale RGB dipendente dal segnale e dal profilo ISO SIDD Galaxy S6 Edge.
+- Esposizione, temperatura relativa, saturazione e contrasto.
+- Riduzione rumore spaziale adattiva a cinque campioni, nitidezza e vignettatura.
+- Confronto originale/elaborato con separatore regolabile e bypass originale.
+- Preset Pulito, Notte e Cinema; impostazioni salvate automaticamente.
+- Esportazione H.264/AAC in MP4, fino a 720p/1080p senza ingrandire la sorgente, con avanzamento, annullamento, apertura e condivisione.
+- Nessun permesso di accesso generale alla memoria o alla fotocamera. Sorgenti originali non modificate.
 
-1. Accedi a GitHub e apri [Actions](https://github.com/MiracleBladeForReal/Sasha/actions/workflows/android.yml).
-2. Apri l’ultima esecuzione verde di **Build Android APK**.
-3. In **Artifacts**, tocca **GalaxySensorLab-debug-apk** e scarica lo ZIP.
-4. Apri lo ZIP con **Archivio** di Samsung ed estrai `app-debug.apk`.
-5. Tocca l’APK e, se richiesto, consenti l’installazione da questa fonte nelle impostazioni Android.
-6. Installa e apri **Galaxy Sensor Lab**.
+## Installazione dal Samsung
 
-Richiede Android 8.0 o successivo. È un APK di sviluppo firmato automaticamente con una chiave debug, adatto alle prove sul telefono. Compilazioni eseguite su runner diversi possono avere chiavi debug diverse: se Android rifiuta un aggiornamento per firma incompatibile, disinstalla la versione di prova precedente (perdendo i suoi dati) e installa la nuova.
+1. Apri [Actions](https://github.com/MiracleBladeForReal/Sasha/actions/workflows/android.yml) e l’ultima build verde.
+2. Scarica **GalaxySensorLab-debug-apk** dalla sezione **Artifacts**.
+3. Estrai lo ZIP con **Archivio** e apri `app-debug.apk`.
+4. Consenti l’installazione da quella fonte, se richiesta.
 
-## Compilazione automatica
+Android 8.0 o successivo. APK di sviluppo: le chiavi debug possono cambiare fra runner. In caso di firma incompatibile occorre disinstallare la versione precedente, perdendo le preferenze locali, e poi installare la nuova. Per pubblicare e aggiornare stabilmente servirà una chiave di produzione.
 
-Ogni push su `main` e ogni pull request avvia compilazione e lint. Per avviarla a mano: **Actions → Build Android APK → Run workflow → main → Run workflow**. Gli artefatti rimangono disponibili per 30 giorni.
+## Uso
 
-La pipeline usa Java 17, Gradle 8.9, Android SDK 35 e Android Gradle Plugin 8.7.3. Non richiede un PC, chiavi personali o servizi a pagamento per la firma debug. Per una versione di produzione servirà una chiave di firma stabile.
+Importa una clip locale, riproducila, cambia un cursore e attiva **Prima / dopo**. Con **Originale** vedi il bypass; disattivalo per vedere gli effetti. **Azzera** ripristina una pipeline neutra senza rumore aggiunto. **Salva video elaborato** apre il selettore Android per scegliere nome e destinazione. Il confronto non viene impresso nell’esportazione: si esporta sempre il fotogramma interamente elaborato. Tieni l’app aperta durante il rendering. Video HDR vengono convertiti in SDR in esportazione; la resa può differire dall’anteprima HDR. Compatibilità codec e prestazioni dipendono dal telefono; se necessario prova 720p e una sorgente MP4 H.264 SDR.
+
+## Calibrazione e limiti scientifici
+
+Il profilo è **Samsung Galaxy S6 Edge**, non una calibrazione automatica del telefono su cui gira l’app. È basato sulla tabella DNG NLF di [SIDD](https://abdokamel.github.io/sidd/), Abdelhamed, Lin, Brown, CVPR 2018, distribuita con licenza MIT.
+
+Fonte fissata al commit [7759f112](https://github.com/AbdoKamel/abdokamel.github.io/blob/7759f112db725fb68cf89c28432cfd2baea90cb0/sidd/files/noise_level_functions.csv). Il JSON `app/src/main/assets/sidd_s6.json` contiene una riga rappresentativa per ISO 100, 200, 400, 800, 1600 e 3200, identificativo della scena e coefficienti RGB originali. Gli ISO intermedi usano interpolazione in log ISO; fuori intervallo non si estrapola. Per S6 tutti i beta2 pubblicati sono zero: l’app li conserva, senza inventare coefficienti di lettura.
+
+Il modello di varianza è `beta1 * segnale_lineare + beta2`. Lo shader usa campioni gaussiani indipendenti per canale e timestamp, scalati con questa varianza. È un’approssimazione gaussiana del rumore dipendente dal segnale, non un campionatore Poisson esatto. La quantità di rumore regola la deviazione standard. L’esposizione e lo sviluppo seguono il rumore.
+
+**Un video decodificato non è un RAW:** contiene già demosaicizzazione, denoise, sharpening, tone mapping, compressione e rumore della ripresa. I coefficienti RAW sono applicati all’RGB lineare della pipeline Media3 come approssimazione sperimentale, senza ricostruzione Bayer e senza inversione dell’ISP. Non si promette una replica dell’ISP Samsung, né una misurazione del sensore sorgente. Temperatura e preset sono regolazioni creative, non matrici colore calibrate.
+
+## Verifica automatica
+
+La pipeline compila APK e test, esegue Android lint e avvia un emulatore Android 10. I test strumentali verificano i coefficienti pubblicati e producono veri MP4 attraverso codec e shader GL: esposizione e rumore devono cambiare i pixel estratti dal file; bypass e metà originale del confronto devono preservarli. Verificano anche durata e decodifica dei file. I report sono artefatti della build. L’emulatore non sostituisce le prove su un Samsung fisico, specialmente per HEVC/HDR, file lunghi e stabilità termica.
+
+Stack: Kotlin 2.0.21, Compose, Media3 1.5.1, Java 17, Gradle 8.9, AGP 8.7.3, SDK 35. GitHub Actions si avvia a ogni push su main, pull request o tramite Run workflow.
