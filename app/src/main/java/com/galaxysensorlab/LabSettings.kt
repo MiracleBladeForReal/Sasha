@@ -8,6 +8,12 @@ import kotlin.math.sqrt
 data class LabSettings(
     val iso: Float = 800f,
     val noise: Float = 0.7f,
+    val naturalGrain: Boolean = true,
+    val grainSize: Float = 2f,
+    val grainLuma: Float = 1f,
+    val grainChroma: Float = 0.15f,
+    val grainSoftness: Float = 0.85f,
+    val grainRate: Float = 24f,
     val exposure: Float = 0f,
     val warmth: Float = 0f,
     val saturation: Float = 1f,
@@ -21,6 +27,9 @@ data class LabSettings(
 ) {
     fun toJson(): String = JSONObject().apply {
         put("iso", iso); put("noise", noise); put("exposure", exposure)
+        put("naturalGrain", naturalGrain); put("grainSize", grainSize)
+        put("grainLuma", grainLuma); put("grainChroma", grainChroma)
+        put("grainSoftness", grainSoftness); put("grainRate", grainRate)
         put("warmth", warmth); put("saturation", saturation); put("contrast", contrast)
         put("denoise", denoise); put("sharpness", sharpness); put("vignette", vignette)
     }.toString()
@@ -31,6 +40,12 @@ data class LabSettings(
             return LabSettings(
                 iso = j.optDouble("iso", 800.0).toFloat().coerceIn(100f, 3200f),
                 noise = j.optDouble("noise", 0.7).toFloat().coerceIn(0f, 2f),
+                naturalGrain = j.optBoolean("naturalGrain", true),
+                grainSize = j.optDouble("grainSize", 2.0).toFloat().coerceIn(0.5f, 12f),
+                grainLuma = j.optDouble("grainLuma", 1.0).toFloat().coerceIn(0f, 1.5f),
+                grainChroma = j.optDouble("grainChroma", 0.15).toFloat().coerceIn(0f, 1.5f),
+                grainSoftness = j.optDouble("grainSoftness", 0.85).toFloat().coerceIn(0f, 1f),
+                grainRate = j.optDouble("grainRate", 24.0).toFloat().coerceIn(1f, 60f),
                 exposure = j.optDouble("exposure", 0.0).toFloat().coerceIn(-3f, 3f),
                 warmth = j.optDouble("warmth", 0.0).toFloat().coerceIn(-1f, 1f),
                 saturation = j.optDouble("saturation", 1.0).toFloat().coerceIn(0f, 2f),

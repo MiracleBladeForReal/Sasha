@@ -53,6 +53,7 @@ private fun LabTheme(content: @Composable () -> Unit) {
 }
 
 @UnstableApi
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun LabScreen(model: LabViewModel) {
     val context = LocalContext.current
@@ -69,11 +70,11 @@ private fun LabScreen(model: LabViewModel) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
             Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("GALAXY / SENSOR LAB", style = MaterialTheme.typography.labelMedium,
+                    Text("GALAXY / SENSOR LAB GRAIN", style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                     Text("Il tuo video. Un altro carattere.", style = MaterialTheme.typography.titleMedium)
                 }
-                Text("v0.2", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+                Text("v0.3", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
             }
             Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(Color.Black), contentAlignment = Alignment.Center) {
                 if (model.videoUri != null) {
@@ -113,7 +114,7 @@ private fun LabScreen(model: LabViewModel) {
                     }
                 }
                 item {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         FilterChip(selected = settings.original, onClick = { model.update(settings.copy(original = !settings.original)) },
                             label = { Text("Originale") }, enabled = ready)
                         FilterChip(selected = settings.compare, onClick = { model.update(settings.copy(compare = !settings.compare, original = false)) },
@@ -145,8 +146,8 @@ private fun LabScreen(model: LabViewModel) {
                             OutlinedButton(onClick = {
                                 model.update(when (name) {
                                     "Pulito" -> LabSettings(iso = 100f, noise = 0f, denoise = 0.35f)
-                                    "Notte" -> LabSettings(iso = 3200f, noise = 0.9f, exposure = -0.4f, warmth = -0.2f)
-                                    else -> LabSettings(iso = 800f, noise = 0.45f, warmth = 0.18f, saturation = 0.8f, contrast = 1.15f, vignette = 0.3f)
+                                    "Notte" -> LabSettings(iso = 3200f, noise = 0.9f, exposure = -0.4f, warmth = -0.2f, grainSize = 1.5f, grainChroma = 0.35f)
+                                    else -> LabSettings(iso = 800f, noise = 0.45f, warmth = 0.18f, saturation = 0.8f, contrast = 1.15f, vignette = 0.3f, grainSize = 4f, grainChroma = 0.08f)
                                 })
                             }, enabled = ready, modifier = Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 6.dp)) { Text(name) }
                         }
@@ -161,8 +162,40 @@ private fun LabScreen(model: LabViewModel) {
                     LabSlider("Intensità rumore", settings.noise, 0f..2f, percent(settings.noise), ready) {
                         model.update(settings.copy(noise = it))
                     }
-                    Text("Rumore teorico sul grigio 18%: σ = ${format(model.calibration.sigma(settings.iso, 0.18f) * settings.noise * 100f)}%",
+                    Text("Scala base SIDD sul grigio 18%: σ = ${format(model.calibration.sigma(settings.iso, 0.18f) * settings.noise * 100f)}%",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                item {
+                    Card {
+                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("Grana naturale", style = MaterialTheme.typography.titleMedium)
+                                    Text(if (settings.naturalGrain) "Attiva · disegno più organico" else "Spenta · rumore SIDD classico",
+                                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                Switch(checked = settings.naturalGrain, onCheckedChange = {
+                                    model.update(settings.copy(naturalGrain = it))
+                                }, enabled = ready)
+                            }
+                            Text("Il profilo Galaxy S6 Edge e i coefficienti ISO restano gli stessi in entrambe le modalità.",
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            if (settings.naturalGrain) {
+                                LabSlider("Dimensione grana", settings.grainSize, 0.5f..12f,
+                                    "${format(settings.grainSize)} px*", ready) { model.update(settings.copy(grainSize = it)) }
+                                LabSlider("Rumore luminosità", settings.grainLuma, 0f..1.5f,
+                                    percent(settings.grainLuma), ready) { model.update(settings.copy(grainLuma = it)) }
+                                LabSlider("Rumore colore", settings.grainChroma, 0f..1.5f,
+                                    percent(settings.grainChroma), ready) { model.update(settings.copy(grainChroma = it)) }
+                                LabSlider("Morbidezza grana", settings.grainSoftness, 0f..1f,
+                                    percent(settings.grainSoftness), ready) { model.update(settings.copy(grainSoftness = it)) }
+                                LabSlider("Rinnovo del disegno", settings.grainRate, 1f..60f,
+                                    "${settings.grainRate.roundToInt()} / s", ready) { model.update(settings.copy(grainRate = it.roundToInt().toFloat())) }
+                                Text("*Dimensione riferita a 1080p, adattata alla sorgente. Il rinnovo cambia solo la grana: non fonde i fotogrammi del video.",
+                                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
                 }
                 item {
                     SectionLabel("02 / SVILUPPO")
@@ -181,7 +214,7 @@ private fun LabScreen(model: LabViewModel) {
                     Card {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             SectionLabel("04 / ESPORTA MP4")
-                            Text("H.264 · audio AAC · effetti applicati all’intero fotogramma", style = MaterialTheme.typography.bodySmall)
+                            Text("H.264 · audio AAC · qualità alta per preservare la grana", style = MaterialTheme.typography.bodySmall)
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 listOf(720, 1080).forEach { height ->
                                     FilterChip(selected = model.exportHeight == height, onClick = { model.exportHeight = height },
@@ -197,7 +230,7 @@ private fun LabScreen(model: LabViewModel) {
                                 Text(if (model.saving) "Salvataggio…" else "Elaborazione ${progress?.let { "$it%" } ?: "in corso…"}")
                                 TextButton(onClick = { model.cancelExport() }, enabled = !model.saving) { Text("Annulla esportazione") }
                             } else {
-                                Button(onClick = { exporter.launch("GalaxySensorLab-${System.currentTimeMillis()}.mp4") },
+                                Button(onClick = { exporter.launch("GalaxySensorLab-Grain-${System.currentTimeMillis()}.mp4") },
                                     enabled = ready, modifier = Modifier.fillMaxWidth()) { Text("Salva video elaborato") }
                             }
                             model.resultUri?.let { uri ->
@@ -236,7 +269,7 @@ private fun LabScreen(model: LabViewModel) {
             val point = model.calibration.at(settings.iso)
             Text("SIDD · Abdelhamed, Lin e Brown · CVPR 2018. Licenza MIT. Galaxy S6 Edge, ISO 100, 200, 400, 800, 1600 e 3200.")
             Text("Varianza RAW = β₁ × segnale + β₂. Verde: β₁ = ${point.shot[1]}, β₂ = ${point.read[1]}. I valori nulli di β₂ sono quelli pubblicati.")
-            Text("Un MP4 contiene già rumore, compressione e sviluppo. Questa è una simulazione aggiuntiva in RGB lineare, non una misura del video originale né un’emulazione completa del sensore.")
+            Text("La modalità naturale modifica dimensione e correlazione della grana con regolazioni creative. Un MP4 contiene già rumore, compressione e sviluppo. Questa è una simulazione aggiuntiva in RGB lineare, non una misura del video originale né un’emulazione completa del sensore.")
         } },
         confirmButton = { TextButton(onClick = {
             runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(model.calibration.source))) }

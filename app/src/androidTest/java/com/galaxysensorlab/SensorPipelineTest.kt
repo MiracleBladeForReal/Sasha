@@ -10,6 +10,8 @@ import android.net.Uri
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.transformer.DefaultEncoderFactory
+import androidx.media3.transformer.VideoEncoderSettings
 import androidx.media3.transformer.Composition
 import androidx.media3.transformer.EditedMediaItem
 import androidx.media3.transformer.Effects
@@ -50,6 +52,8 @@ class SensorPipelineTest {
 
     @Test fun settingsSurviveSavingWithoutPreviewBypass() {
         val original = LabSettings(iso = 1600f, noise = 1.2f, exposure = -1f, denoise = 0.4f,
+            naturalGrain = false, grainSize = 8.5f, grainLuma = 0.4f, grainChroma = 0.8f,
+            grainSoftness = 0.3f, grainRate = 12f,
             compare = true, original = true)
         val restored = LabSettings.fromJson(original.toJson())
         assertEquals(original.copy(compare = false, original = false), restored)
@@ -81,6 +85,7 @@ class SensorPipelineTest {
     }
 
     @Test fun appOpensVideoAndSavesProcessedResult() {
+        assertEquals("New app must install alongside version 0.2", "com.galaxysensorlab.grain", context.packageName)
         val png = createInput()
         val source = File(context.cacheDir, "ui-source.mp4")
         render(png, LabSettings(noise = 0f), source).recycle()
@@ -124,7 +129,7 @@ class SensorPipelineTest {
                 val values = ContentValues().apply {
                     put(MediaStore.Images.Media.DISPLAY_NAME, "lab-video.png")
                     put(MediaStore.Images.Media.MIME_TYPE, "image/png")
-                    put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/GalaxySensorLab-tests")
+                    put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/GalaxySensorLab-Grain-tests")
                 }
                 val imageUri = requireNotNull(context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values))
                 requireNotNull(context.contentResolver.openOutputStream(imageUri)).use {
@@ -154,11 +159,68 @@ class SensorPipelineTest {
         context.getSharedPreferences("lab", 0).edit().clear().commit()
     }
 
-    private fun createInput(): File {
+    @Test fun naturalGrainSizeAndChromaChangeActualExportedPixels() {
+        val input = createInput(flat = true)
+        val base = render(input, LabSettings(noise = 0f))
+        val mono = LabSettings(iso = 3200f, noise = 1.4f, naturalGrain = true,
+            grainSize = 0.5f, grainChroma = 0f, grainSoftness = 1f)
+        val fine = render(input, mono)
+        val coarse = render(input, mono.copy(grainSize = 12f))
+        val coloured = render(input, mono.copy(grainLuma = 0f, grainChroma = 1f))
+        assertTrue("Natural grain must affect the video", meanDifference(base, fine) > 3)
+        assertTrue("Larger grain must have greater spatial correlation", roughness(coarse) < roughness(fine) * 0.9)
+        assertTrue("Colour control must add chroma variation", colourVariation(coloured) > colourVariation(fine) + 3)
+        listOf(base, fine, coarse, coloured).forEach { it.recycle() }
+        input.delete()
+    }
+
+    @Test fun classicModeIgnoresTheNewCreativeControls() {
+        val input = createInput()
+        val classic = LabSettings(iso = 1600f, noise = 1f, naturalGrain = false)
+        val a = render(input, classic)
+        val b = render(input, classic.copy(grainSize = 12f, grainLuma = 0f,
+            grainChroma = 1.5f, grainSoftness = 0f, grainRate = 1f))
+        assertTrue("Turning natural grain off must restore the classic noise path", meanDifference(a,b) < 3)
+        a.recycle(); b.recycle(); input.delete()
+    }
+
+    @Test fun grainRenewalFollowsVideoTimeRatherThanPlaybackSpeed() {
+        val input = createInput(flat = true)
+        val slow = LabSettings(iso = 3200f, noise = 1.4f, grainRate = 1f, grainChroma = 0f)
+        val slowA = render(input, slow, sampleTimeUs = 100_000)
+        val slowB = render(input, slow, sampleTimeUs = 400_000)
+        val fastA = render(input, slow.copy(grainRate = 24f), sampleTimeUs = 100_000)
+        val fastB = render(input, slow.copy(grainRate = 24f), sampleTimeUs = 400_000)
+        assertTrue("One renewal per second must preserve the pattern within that second", meanDifference(slowA,slowB) < 3)
+        assertTrue("24 renewals per second must change the pattern", meanDifference(fastA,fastB) > 3)
+        listOf(slowA,slowB,fastA,fastB).forEach { it.recycle() }
+        input.delete()
+    }
+
+    private fun roughness(bitmap: Bitmap): Double {
+        var total = 0.0; var count = 0
+        for (y in 12 until bitmap.height-12) for (x in 12 until bitmap.width-13) {
+            total += abs(Color.red(bitmap.getPixel(x,y)) - Color.red(bitmap.getPixel(x+1,y)))
+            count++
+        }
+        return total / count
+    }
+
+    private fun colourVariation(bitmap: Bitmap): Double {
+        var total = 0.0; var count = 0
+        for (y in 12 until bitmap.height-12 step 2) for (x in 12 until bitmap.width-12 step 2) {
+            val p = bitmap.getPixel(x,y)
+            total += abs(Color.red(p)-Color.green(p)) + abs(Color.blue(p)-Color.green(p))
+            count += 2
+        }
+        return total/count
+    }
+
+    private fun createInput(flat: Boolean = false): File {
         val bitmap = Bitmap.createBitmap(320, 240, Bitmap.Config.ARGB_8888)
         for (y in 0 until bitmap.height) for (x in 0 until bitmap.width) {
-            val gray = 60 + x * 70 / bitmap.width
-            bitmap.setPixel(x, y, Color.rgb(gray, gray + y * 30 / bitmap.height, gray))
+            val gray = if (flat) 100 else 60 + x * 70 / bitmap.width
+            bitmap.setPixel(x, y, Color.rgb(gray, if (flat) gray else gray + y * 30 / bitmap.height, gray))
         }
         return File.createTempFile("input", ".png", context.cacheDir).also { file ->
             file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
@@ -166,7 +228,7 @@ class SensorPipelineTest {
         }
     }
 
-    private fun render(input: File, settings: LabSettings, retainedOutput: File? = null): Bitmap {
+    private fun render(input: File, settings: LabSettings, retainedOutput: File? = null, sampleTimeUs: Long = 400_000): Bitmap {
         val output = File.createTempFile("test", ".mp4", context.cacheDir).also { it.delete() }
         val done = CountDownLatch(1)
         val failure = AtomicReference<Throwable?>()
@@ -176,7 +238,9 @@ class SensorPipelineTest {
                 .setMimeType(MimeTypes.IMAGE_PNG).setImageDurationMs(1000).build()
             val edited = EditedMediaItem.Builder(media).setFrameRate(24)
                 .setEffects(Effects(emptyList(), listOf(SensorEffect(calibration, settings)))).build()
-            val transformer = Transformer.Builder(context).setVideoMimeType(MimeTypes.VIDEO_H264)
+            val encoders = DefaultEncoderFactory.Builder(context)
+                .setRequestedVideoEncoderSettings(VideoEncoderSettings.Builder().setBitrate(4_000_000).build()).build()
+            val transformer = Transformer.Builder(context).setEncoderFactory(encoders).setVideoMimeType(MimeTypes.VIDEO_H264)
                 .addListener(object : Transformer.Listener {
                     override fun onCompleted(composition: Composition, exportResult: ExportResult) { done.countDown() }
                     override fun onError(composition: Composition, exportResult: ExportResult, exportException: ExportException) {
@@ -196,7 +260,7 @@ class SensorPipelineTest {
                 reader.setDataSource(output.absolutePath)
                 assertTrue((reader.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLong() ?: 0) >= 800)
                 retainedOutput?.let { output.copyTo(it, overwrite = true) }
-                return requireNotNull(reader.getFrameAtTime(400_000, MediaMetadataRetriever.OPTION_CLOSEST))
+                return requireNotNull(reader.getFrameAtTime(sampleTimeUs, MediaMetadataRetriever.OPTION_CLOSEST))
             } finally { reader.release() }
         } finally {
             instrumentation.runOnMainSync { worker.get()?.cancel() }

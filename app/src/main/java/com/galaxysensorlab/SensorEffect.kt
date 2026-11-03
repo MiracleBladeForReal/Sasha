@@ -46,8 +46,15 @@ private class SensorProgram(
             program.setFloatsUniform("uPixel", floatArrayOf(1f / width, 1f / height))
             program.setFloatsUniform("uShot", n.shot)
             program.setFloatsUniform("uRead", n.read)
-            program.setFloatUniform("uTime", (presentationTimeUs % 10_000_000L) / 1_000_000f)
+            program.setFloatUniform("uTime", (presentationTimeUs % 3_600_000_000L) / 1_000_000f)
             program.setFloatUniform("uNoise", s.noise)
+            program.setFloatUniform("uNaturalGrain", if (s.naturalGrain) 1f else 0f)
+            // Reference-pixel size keeps the look consistent after the export resize.
+            program.setFloatUniform("uGrainSize", maxOf(1f, s.grainSize * height / 1080f))
+            program.setFloatUniform("uGrainLuma", s.grainLuma)
+            program.setFloatUniform("uGrainChroma", s.grainChroma)
+            program.setFloatUniform("uGrainSoftness", s.grainSoftness)
+            program.setFloatUniform("uGrainRate", s.grainRate)
             program.setFloatUniform("uExposure", s.exposure)
             program.setFloatUniform("uWarmth", s.warmth)
             program.setFloatUniform("uSaturation", s.saturation)
@@ -87,6 +94,8 @@ private class SensorProgram(
             uniform vec3 uRead;
             uniform float uTime, uNoise, uExposure, uWarmth, uSaturation, uContrast;
             uniform float uDenoise, uSharpness, uVignette, uOriginal, uSplit;
+            uniform float uNaturalGrain, uGrainSize, uGrainLuma, uGrainChroma;
+            uniform float uGrainSoftness, uGrainRate;
             varying vec2 vUv;
             float random(vec2 p, float seed) {
                 return fract(sin(dot(p, vec2(12.9898,78.233)) + seed) * 43758.5453);
@@ -96,8 +105,35 @@ private class SensorProgram(
                 float b = random(p.yx + vec2(41.0,17.0), seed + 23.0);
                 return sqrt(-2.0 * log(a)) * cos(6.28318530718 * b);
             }
+            // Correlated Gaussian lattice: hard cells to smooth grains. Normalize the
+            // interpolation weights so grain size does not silently change variance.
+            float grainField(vec2 p, float seed) {
+                vec2 cell = floor(p);
+                vec2 f = fract(p);
+                vec2 blend = mix(step(vec2(0.5), f), f*f*(3.0-2.0*f), uGrainSoftness);
+                vec4 w = vec4((1.0-blend.x)*(1.0-blend.y), blend.x*(1.0-blend.y),
+                              (1.0-blend.x)*blend.y, blend.x*blend.y);
+                vec4 samples = vec4(gaussian(cell, seed), gaussian(cell+vec2(1.0,0.0), seed),
+                                    gaussian(cell+vec2(0.0,1.0), seed), gaussian(cell+vec2(1.0,1.0), seed));
+                return dot(w, samples) / max(sqrt(dot(w,w)), 0.001);
+            }
             vec3 sensor(vec2 uv) {
                 vec3 signal = max(texture2D(uTex, clamp(uv, 0.0, 1.0)).rgb, 0.0);
+                vec3 variance = max(uShot * signal + uRead, 0.0);
+                if (uNaturalGrain > 0.5) {
+                    vec2 p = uv / uPixel / uGrainSize;
+                    float seed = floor(uTime * uGrainRate) * 0.137;
+                    vec3 weights = vec3(0.2126, 0.7152, 0.0722);
+                    float luma = grainField(p, seed) * sqrt(dot(variance, weights)) * uGrainLuma;
+                    vec3 chroma = vec3(0.0);
+                    if (uGrainChroma > 0.0) {
+                        // Slightly broader colour grain; remove its luminance component.
+                        chroma = vec3(grainField(p*0.65, seed+71.0), grainField(p*0.65, seed+137.0),
+                                      grainField(p*0.65, seed+211.0)) * sqrt(variance);
+                        chroma -= vec3(dot(chroma, weights));
+                    }
+                    return signal + (vec3(luma) + chroma*uGrainChroma) * uNoise;
+                }
                 vec2 pixel = floor(uv / uPixel);
                 float frameSeed = floor(uTime * 1000.0) * 0.137;
                 vec3 g = vec3(gaussian(pixel, frameSeed), gaussian(pixel, frameSeed + 71.0),
@@ -112,8 +148,11 @@ private class SensorProgram(
                     return;
                 }
                 vec3 c = sensor(vUv);
-                vec3 avg = (sensor(vUv + vec2(uPixel.x,0.0)) + sensor(vUv - vec2(uPixel.x,0.0))
-                          + sensor(vUv + vec2(0.0,uPixel.y)) + sensor(vUv - vec2(0.0,uPixel.y))) * 0.25;
+                vec3 avg = c;
+                if (uDenoise > 0.0 || uSharpness > 0.0) {
+                    avg = (sensor(vUv + vec2(uPixel.x,0.0)) + sensor(vUv - vec2(uPixel.x,0.0))
+                         + sensor(vUv + vec2(0.0,uPixel.y)) + sensor(vUv - vec2(0.0,uPixel.y))) * 0.25;
+                }
                 float expectedSigma = sqrt(max(dot(uShot * max(c, 0.0) + uRead, vec3(0.333333)), 0.0)) * uNoise;
                 float edge = smoothstep(0.015 + expectedSigma, 0.12 + 2.0 * expectedSigma, length(c - avg));
                 c = mix(c, avg, uDenoise * (1.0 - edge) * 0.85);

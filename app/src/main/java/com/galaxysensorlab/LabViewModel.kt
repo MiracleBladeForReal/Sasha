@@ -18,6 +18,8 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.effect.Presentation
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.transformer.DefaultEncoderFactory
+import androidx.media3.transformer.VideoEncoderSettings
 import androidx.media3.transformer.Composition
 import androidx.media3.transformer.EditedMediaItem
 import androidx.media3.transformer.EditedMediaItemSequence
@@ -158,7 +160,11 @@ class LabViewModel(application: Application) : AndroidViewModel(application) {
         val composition = Composition.Builder(EditedMediaItemSequence.Builder(edited).build())
             .setHdrMode(Composition.HDR_MODE_TONE_MAP_HDR_TO_SDR_USING_OPEN_GL).build()
         try {
+            val encoderFactory = DefaultEncoderFactory.Builder(app)
+                .setRequestedVideoEncoderSettings(VideoEncoderSettings.Builder()
+                    .setBitrate(if (targetHeight > 720) 16_000_000 else 8_000_000).build()).build()
             val worker = Transformer.Builder(app)
+                .setEncoderFactory(encoderFactory)
                 .setVideoMimeType(MimeTypes.VIDEO_H264)
                 .setAudioMimeType(MimeTypes.AUDIO_AAC)
                 .addListener(object : Transformer.Listener {
