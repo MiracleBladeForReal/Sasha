@@ -75,11 +75,11 @@ private fun LabScreen(model: LabViewModel) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
             Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("GALAXY / SENSOR LAB GRAIN", style = MaterialTheme.typography.labelMedium,
+                    Text("GALAXY / EDGE CAPTURE", style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                    Text("Il tuo video. Un altro carattere.", style = MaterialTheme.typography.titleMedium)
+                    Text("Una nuova ripresa, la tua grana.", style = MaterialTheme.typography.titleMedium)
                 }
-                Text("v0.3", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+                Text("v0.4", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
             }
             Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(Color.Black), contentAlignment = Alignment.Center) {
                 if (model.videoUri != null) {
@@ -124,7 +124,7 @@ private fun LabScreen(model: LabViewModel) {
                             label = { Text("Originale") }, enabled = ready)
                         FilterChip(selected = settings.compare, onClick = { model.update(settings.copy(compare = !settings.compare, original = false)) },
                             label = { Text("Prima / dopo") }, enabled = ready)
-                        TextButton(onClick = { model.update(LabSettings(noise = 0f, profileId = camera.id, iso = settings.iso)) }, enabled = ready) { Text("Azzera") }
+                        TextButton(onClick = { model.update(LabSettings(noise = 0f, profileId = camera.id, iso = settings.iso, noiseSeed = settings.noiseSeed)) }, enabled = ready) { Text("Azzera") }
                     }
                     if (settings.compare && !settings.original) {
                         LabSlider("Linea di confronto", settings.split, 0.05f..0.95f, "${(settings.split * 100).roundToInt()}%", ready) {
@@ -155,7 +155,7 @@ private fun LabScreen(model: LabViewModel) {
                                     "Pulito" -> LabSettings(iso = 100f, noise = 0f, denoise = 0.35f)
                                     "Notte" -> LabSettings(iso = 3200f, noise = 0.9f, exposure = -0.4f, warmth = -0.2f, grainSize = 1.5f, grainChroma = 0.35f)
                                     else -> LabSettings(iso = 800f, noise = 0.45f, warmth = 0.18f, saturation = 0.8f, contrast = 1.15f, vignette = 0.3f, grainSize = 4f, grainChroma = 0.08f)
-                                }.copy(profileId = camera.id))
+                                }.copy(profileId = camera.id, noiseSeed = settings.noiseSeed))
                             }, enabled = ready, modifier = Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 6.dp)) { Text(name) }
                         }
                     }
@@ -180,8 +180,8 @@ private fun LabScreen(model: LabViewModel) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f)) {
-                                    Text("Grana naturale", style = MaterialTheme.typography.titleMedium)
-                                    Text(if (settings.naturalGrain) "Attiva · disegno più organico" else "Spenta · rumore classico",
+                                    Text("Rumore di ripresa", style = MaterialTheme.typography.titleMedium)
+                                    Text(if (settings.naturalGrain) "Attivo · grana correlata" else "Spento · rumore classico",
                                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                                 Switch(checked = settings.naturalGrain, onCheckedChange = {
@@ -191,6 +191,28 @@ private fun LabScreen(model: LabViewModel) {
                             Text("Il profilo selezionato e i suoi coefficienti ISO restano gli stessi in entrambe le modalità.",
                                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             if (settings.naturalGrain) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("Simulazione di ripresa", Modifier.weight(1f))
+                                    Switch(checked = settings.captureMode, onCheckedChange = {
+                                        model.update(settings.copy(captureMode = it))
+                                    }, enabled = ready)
+                                }
+                                Text(if (settings.captureMode) "Rumore fotonico dipendente dalla luce + componente di lettura. Ogni nuova ripresa ha una sequenza casuale diversa."
+                                    else "Grana naturale della versione precedente.", style = MaterialTheme.typography.bodySmall)
+                                OutlinedButton(onClick = { model.newTake() }, enabled = ready,
+                                    modifier = Modifier.fillMaxWidth()) { Text("Nuova ripresa · ${settings.noiseSeed}") }
+                                if (settings.captureMode) {
+                                    LabSlider("Rumore di lettura aggiunto", settings.readNoise, 0f..0.02f,
+                                        "${format(settings.readNoise * 100f)}%", ready) { model.update(settings.copy(readNoise = it)) }
+                                    LabSlider("Rumore nelle ombre", settings.shadowGain, 0f..3f,
+                                        percent(settings.shadowGain), ready) { model.update(settings.copy(shadowGain = it)) }
+                                    LabSlider("Protezione alte luci", settings.highlightProtect, 0f..1f,
+                                        percent(settings.highlightProtect), ready) { model.update(settings.copy(highlightProtect = it)) }
+                                    LabSlider("Coerenza nel tempo", settings.temporalCoherence, 0f..1f,
+                                        percent(settings.temporalCoherence), ready) { model.update(settings.copy(temporalCoherence = it)) }
+                                    Text("Questi quattro controlli sono regolazioni creative, non misure del telefono. La coerenza lega il rumore di due istanti vicini senza fondere il video. L’esportazione usa la stessa sequenza dell’anteprima.",
+                                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
                                 LabSlider("Dimensione grana", settings.grainSize, 0.5f..12f,
                                     "${format(settings.grainSize)} px*", ready) { model.update(settings.copy(grainSize = it)) }
                                 LabSlider("Rumore luminosità", settings.grainLuma, 0f..1.5f,
@@ -240,7 +262,7 @@ private fun LabScreen(model: LabViewModel) {
                                 Text(if (model.saving) "Salvataggio…" else "Elaborazione ${progress?.let { "$it%" } ?: "in corso…"}")
                                 TextButton(onClick = { model.cancelExport() }, enabled = !model.saving) { Text("Annulla esportazione") }
                             } else {
-                                Button(onClick = { exporter.launch("GalaxySensorLab-Grain-${System.currentTimeMillis()}.mp4") },
+                                Button(onClick = { exporter.launch("GalaxySensorLab-Edge-Capture-${System.currentTimeMillis()}.mp4") },
                                     enabled = ready, modifier = Modifier.fillMaxWidth()) { Text("Salva video elaborato") }
                             }
                             model.resultUri?.let { uri ->
@@ -268,7 +290,7 @@ private fun LabScreen(model: LabViewModel) {
                     }
                 } }
                 item {
-                    Text("Laboratorio sperimentale · elaborazione locale\nIl profilo selezionato non calibra automaticamente il video e non ricostruisce RAW o ISP della fotocamera.",
+                    Text("Simulazione di rumore da fotocamera · elaborazione locale\nIl risultato può ricordare una ripresa reale; il video conserva la propria origine e gli eventuali difetti di partenza.",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
@@ -285,8 +307,13 @@ private fun LabScreen(model: LabViewModel) {
             Text("ISO pubblicati: ${camera.points.joinToString { it.iso.toInt().toString() }}")
             Text("Varianza RAW = a × segnale + b. Verde: a = ${point.shot[1]}, b = ${point.read[1]}.")
             Text(if (camera.dataset == "SIDD") "I coefficienti originali S6 Edge sono conservati, compresi i valori nulli di b."
-                 else "Coefficienti RGB darktable originali. ISO intermedi interpolati linearmente; niente estrapolazione. In presenza di più misure allo stesso ISO usiamo la prima pubblicata. I valori b negativi sono conservati: si limita a zero solo la varianza risultante.")
+                 else "Coefficienti RGB darktable originali. ISO intermedi interpolati linearmente; niente estrapolazione. In presenza di più misure allo stesso ISO usiamo la prima pubblicata. I valori b negativi sono conservati nei dati: nella simulazione fotonica le componenti fisiche sono limitate separatamente a zero; nella grana precedente si limita solo la varianza totale.")
             Text("La modalità naturale modifica dimensione e correlazione della grana con regolazioni creative. Applicare un profilo RAW a un MP4 già elaborato è un’approssimazione, non una replica della fotocamera.")
+            Text("Riferimenti S6 Edge: GSMArena pubblica campioni MP4 originali; DPReview mostra riprese diurne e notturne ricompresse da YouTube. Sono riferimenti visivi pubblicati, non una calibrazione video misurata per questa app.")
+            TextButton(onClick = { runCatching { context.startActivity(Intent(Intent.ACTION_VIEW,
+                android.net.Uri.parse("https://www.gsmarena.com/samsung_galaxy_s6_edge-review-1236p9.php"))) } }) { Text("Video originali GSMArena") }
+            TextButton(onClick = { runCatching { context.startActivity(Intent(Intent.ACTION_VIEW,
+                android.net.Uri.parse("https://www.dpreview.com/reviews/2097209656/samsung-galaxy-s6-edge-camera-review/"))) } }) { Text("Riprese diurne / notturne DPReview") }
             TextButton(onClick = { showSource = false; showLicenses = true }) { Text("Licenze e codice sorgente") }
         } },
         confirmButton = { TextButton(onClick = {
@@ -296,7 +323,7 @@ private fun LabScreen(model: LabViewModel) {
     if (showLicenses) {
         val licenseText = remember { context.assets.open("THIRD-PARTY-NOTICES.txt").bufferedReader().use { it.readText() } +
             "\n\n" + context.assets.open("LICENSE-GPL-3.0.txt").bufferedReader().use { it.readText() } }
-        AlertDialog(onDismissRequest = { showLicenses = false }, title = { Text("Licenze · edizione Grain") },
+        AlertDialog(onDismissRequest = { showLicenses = false }, title = { Text("Licenze · Edge Capture") },
             text = { Text(licenseText, modifier = Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState()),
                 style = MaterialTheme.typography.bodySmall) },
             confirmButton = { TextButton(onClick = {

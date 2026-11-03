@@ -1,62 +1,59 @@
-# Galaxy Sensor Lab Grain 0.3
+# Galaxy Sensor Lab Edge Capture 0.4
 
-Versione indipendente derivata da Galaxy Sensor Lab 0.2, conservata intatta su `main` al commit `206e1d0896eeccda3372424d76dfc341b6e043d9`. Sviluppo sul ramo `natural-grain-v0.3`.
+Terza app Android, derivata da **Grain 0.3** (commit `4a6eb7ce037ccc66bc2a720bcbce4514df2b5fad`), con profilo predefinito **Samsung Galaxy S6 Edge SIDD**. Ramo `edge-capture-v0.4`. Identificativo `com.galaxysensorlab.edgecapture`, nome **Galaxy Sensor Lab Edge Capture**: si installa insieme alle altre due app, con dati separati.
 
-Identificativo Android `com.galaxysensorlab.grain`, nome **Galaxy Sensor Lab Grain**: si installa accanto alla vecchia app e usa preferenze separate. Non disinstallare la 0.2.
+`main` (0.2, `206e1d0896eeccda3372424d76dfc341b6e043d9`) e `natural-grain-v0.3` restano intatti. Nessun file video originale viene modificato; elaborazione interamente sul telefono.
 
-Laboratorio video Android con elaborazione GPU reale, anteprima e salvataggio MP4. Tutto avviene sul telefono, senza caricamenti in rete.
+## Rumore di ripresa
 
-## Funzioni
+- Rumore fotonico dipendente dal segnale: varianza base `a * segnale`. Poisson a basso conteggio, approssimazione gaussiana da lambda 12. Campionamento Poisson tramite prodotto di uniformi, massimo 64 iterazioni con fallback gaussiano.
+- Componente di lettura indipendente dal segnale: `max(b,0) + readNoise²`. Il valore aggiunto è **creativo e non misurato**: gli originali SIDD S6 hanno `b = 0`, conservato senza modifiche.
+- Quantità separata per luminosità e colore. Il colore usa campi RGB indipendenti, più larghi, con sottrazione della componente luminanza.
+- Dimensione 0.5–12 px riferita a 1080p (minimo 1 pixel sorgente); morbidezza e interpolazione spaziale normalizzata per mantenere la varianza del campo a segnale costante.
+- Ombre e alte luci con curve distinte e regolabili. Le soglie sono in RGB lineare della pipeline, non livelli RAW misurati.
+- Rinnovo 1–60 volte al secondo basato sul timestamp della clip. Coerenza temporale tramite campo corrente + coefficiente × campo precedente, normalizzati. È un modello MA(1) del rumore: la correlazione ideale fra passi adiacenti è `c/(1+c²)`, fino a 0.5. Non fonde i fotogrammi del video e non implementa un denoise temporale OEM.
+- **Nuova ripresa** genera un seme con `SecureRandom` Android. Ogni importazione genera una nuova realizzazione. Lo shader usa il seme salvato e il timestamp, quindi anteprima ed esportazione riutilizzano la stessa sequenza (con possibili differenze di conversione colore, HDR, risoluzione e codec). Preset e reset mantengono il seme.
+- Spegnendo **Simulazione di ripresa** si torna al campo gaussiano naturale della 0.3; spegnendo **Rumore di ripresa** si usa il percorso classico. Il generatore è aggiornato in questa edizione, quindi non si promette identità pixel per pixel con i vecchi APK.
 
-- Importazione tramite selettore Android, con permesso persistente sul file.
-- Profilo SIDD Galaxy S6 Edge e coefficienti ISO originali conservati senza modifiche e predefiniti.
-- Selettore con ricerca per **439 fotocamere**: S6 Edge SIDD + 438 modelli del catalogo darktable. Include Canon, Nikon, Sony, Fujifilm, Olympus, Panasonic, Pentax, Samsung NX e altri; fra i telefoni sono presenti anche OnePlus Nord 3 5G, ONEPLUS A6003 e LG Nexus 5/5X. La selezione cambia i coefficienti RGB usati realmente da anteprima ed esportazione.
-- Gamma ISO adattata al profilo scelto. SIDD mantiene la precedente interpolazione log ISO; darktable usa interpolazione lineare dei coefficienti in ISO, senza estrapolare. Dove lo stesso ISO ha più misurazioni si usa la prima pubblicata, mantenendo il file originale completo per verificabilità.
-- Profili conservati con modello, fonte, contributori, licenza e collegamento alla sorgente GitHub esatta. Il selettore non identifica automaticamente la fotocamera che ha ripreso il video.
-- Interruttore **Grana naturale**, con dimensione 0.5–12 px riferiti a 1080p, intensità luminanza e colore separate, morbidezza e frequenza di rinnovo 1–60 disegni/secondo.
-- Modalità classica SIDD disponibile spegnendo Grana naturale.
-- La grana naturale usa campi gaussiani spazialmente correlati; normalizza i pesi di interpolazione per contenere variazioni di ampiezza dovute alla dimensione. La crominanza ha una scala leggermente maggiore e la sua componente di luminanza viene sottratta.
-- Il disegno dipende dal timestamp del video, quindi la sua velocità non cambia con il tempo di rendering. Non si tratta di riduzione del rumore temporale: nessun fotogramma sorgente viene fuso con gli altri.
-- Esposizione, temperatura relativa, saturazione e contrasto.
-- Riduzione rumore spaziale adattiva a cinque campioni, nitidezza e vignettatura.
-- Confronto originale/elaborato con separatore regolabile e bypass originale.
-- Preset Pulito, Notte e Cinema; impostazioni salvate automaticamente.
-- Esportazione H.264/AAC in MP4, fino a 720p/1080p senza ingrandire la sorgente, con avanzamento, annullamento, apertura e condivisione.
-- Nessun permesso di accesso generale alla memoria o alla fotocamera. Sorgenti originali non modificate.
+La distribuzione finale è modificata dalla miscela luma/croma, correlazione spaziale/temporale, curve creative e clipping. Non è un modello calibrato dell’intera fotocamera.
+
+## Altre funzioni conservate
+
+439 profili selezionabili con ricerca: S6 Edge SIDD e 438 modelli darktable (incluse fotocamere Canon, Nikon, Sony, Fujifilm e telefoni OnePlus/LG). La scelta modifica realmente i coefficienti RGB. ISO limitati all’intervallo pubblicato; interpolazione log ISO per SIDD, lineare ISO per darktable. Duplicati ISO: prima misura pubblicata. Il JSON originale darktable rimane completo.
+
+Importazione video Android, anteprima anche in pausa, prima/dopo, bypass originale, preset, esposizione, temperatura relativa, saturazione, contrasto, denoise spaziale, nitidezza, vignettatura. Salvataggio MP4 H.264/AAC a 720p/1080p senza ingrandimento; bitrate richiesto 8/16 Mbps. Avanzamento, annullamento, apertura e condivisione del risultato. In esportazione viene elaborato l’intero fotogramma, senza linea di confronto. Impostazioni salvate automaticamente.
+
+## Video di riferimento trovati online
+
+Fonti e collegamenti pubblicati verificati il 3 novembre 2026; **non sono stati scaricati né analizzati statisticamente in questa sessione**. Non presentiamo una calibrazione ricavata da questi filmati.
+
+- [GSMArena: recensione video S6 Edge](https://www.gsmarena.com/samsung_galaxy_s6_edge-review-1236p9.php): il sito dichiara campioni originali, non modificati, direttamente dal telefono. [MP4 1080p/30](https://fdn.gsmarena.com/vv/reviewsimg/samsung-galaxy-s6-edge/camera/gsmarena_v002.mp4), [MP4 2160p/30](https://fdn.gsmarena.com/vv/reviewsimg/samsung-galaxy-s6-edge/camera/gsmarena_v001.mp4). Originale video compresso dal telefono, non RAW.
+- [DPReview: recensione fotocamera S6 Edge](https://www.dpreview.com/reviews/2097209656/samsung-galaxy-s6-edge-camera-review/): [diurno 1080p](https://www.youtube.com/watch?v=vJssgz1gokM), [scarsa luce](https://www.youtube.com/watch?v=T995ZgOwhVA), [4K](https://www.youtube.com/watch?v=TQc_MGz7Rq0). Copie distribuite su YouTube, ricompresse: utili al confronto visivo, inadatte a misurare direttamente il rumore RAW.
+
+Nell’app i riferimenti sono accessibili da **Dati, fonte e licenze**. I filmati restano dei rispettivi autori e non sono inclusi nell’APK. Per una futura calibrazione video controllata servono riprese originali con superfici uniformi, impostazioni note e più condizioni di illuminazione; un normale filmato non separa automaticamente texture, compressione e rumore del sensore.
 
 ## Installazione dal Samsung
 
-1. Apri [Actions](https://github.com/MiracleBladeForReal/Sasha/actions/workflows/android.yml) e l’ultima build verde del ramo **natural-grain-v0.3**.
-2. Scarica **GalaxySensorLab-Grain-debug-apk** dalla sezione **Artifacts**.
-3. Estrai lo ZIP con **Archivio** e apri `app-debug.apk`.
-4. Consenti l’installazione da quella fonte, se richiesta.
+1. Apri [Actions del ramo Edge Capture](https://github.com/MiracleBladeForReal/Sasha/actions?query=branch%3Aedge-capture-v0.4) e l’ultima build verde.
+2. Scarica **GalaxySensorLab-Edge-Capture-debug-apk** in **Artifacts**.
+3. In **Archivio**, estrai lo ZIP e apri `app-debug.apk`. Consenti l’installazione da quella fonte quando Android lo richiede.
 
-Android 8.0 o successivo. APK di sviluppo: le chiavi debug possono cambiare fra runner. In caso di firma incompatibile occorre disinstallare la versione precedente, perdendo le preferenze locali, e poi installare la nuova. Per pubblicare e aggiornare stabilmente servirà una chiave di produzione.
+Android 8 o successivo. Non disinstallare le altre app: questa ha un identificativo differente. APK debug; per aggiornamenti stabili nel tempo servirà una chiave di firma di produzione.
 
-## Uso
+Importa un video, lascia il profilo S6 Edge, regola intensità/ISO e prova **Nuova ripresa**. Le impostazioni modificano il risultato reale esportato. Tieni l’app aperta durante il salvataggio; per clip impegnative prova 720p e una sorgente MP4 H.264 SDR. Non sono ancora misurate velocità o temperatura su un Samsung fisico. Il campionamento fotonico richiede più calcoli della grana precedente.
 
-Importa una clip locale, riproducila, cambia un cursore e attiva **Prima / dopo**. Con **Originale** vedi il bypass; disattivalo per vedere gli effetti. **Azzera** ripristina una pipeline neutra senza rumore aggiunto. **Salva video elaborato** apre il selettore Android per scegliere nome e destinazione. Il confronto non viene impresso nell’esportazione: si esporta sempre il fotogramma interamente elaborato. Tieni l’app aperta durante il rendering. Video HDR vengono convertiti in SDR in esportazione; la resa può differire dall’anteprima HDR. Compatibilità codec e prestazioni dipendono dal telefono; se necessario prova 720p e una sorgente MP4 H.264 SDR.
+## Fonti, licenze e limiti
 
-## Catalogo darktable e licenze
+SIDD: Abdelhamed, Lin, Brown, CVPR 2018, [tabella originale al commit fissato](https://github.com/AbdoKamel/abdokamel.github.io/blob/7759f112db725fb68cf89c28432cfd2baea90cb0/sidd/files/noise_level_functions.csv), MIT. Sei profili rappresentativi ISO 100–3200, coefficienti e identificativi scena in `sidd_s6.json`. Nessun valore S6 è sostituito con una calibrazione inventata.
 
-Il file `app/src/main/assets/darktable-noiseprofiles.json` proviene da [darktable, commit 879067695ea85f42d238a5c1603a021d14d71d3f](https://github.com/darktable-org/darktable/blob/879067695ea85f42d238a5c1603a021d14d71d3f/data/noiseprofiles.json), blob Git `086a62784df9e660a9cdcfc96d15c5302522502e`. Contiene 438 modelli e coefficienti per ISO e canale. Si importano `a` come coefficiente del segnale e `b` come intercetta della **varianza**, senza elevarli al quadrato. Si conserva l’eventuale `b` negativo e si limita a zero soltanto la varianza risultante: `sigma = sqrt(max(a * signal + b, 0))`. Sono dati per RAW lineare, non per il video già sviluppato.
+[darktable](https://github.com/darktable-org/darktable/blob/879067695ea85f42d238a5c1603a021d14d71d3f/data/noiseprofiles.json), GPL-3.0-or-later, blob originale `086a62784df9e660a9cdcfc96d15c5302522502e`. Nella simulazione fotonica si limitano separatamente a zero i coefficienti negativi prima della scomposizione fisica; nei percorsi precedenti si limita la varianza totale `max(a * segnale + b,0)`. Il file dati non viene alterato.
 
-La sola nuova edizione **Grain** viene distribuita sotto **GPL-3.0-or-later**, con licenza completa nel repository e nell’APK, attribuzioni darktable e collegamento al codice del commit esatto che ha prodotto l’APK. Dati SIDD: MIT. AndroidX/Media3: Apache 2.0. La versione 0.2 su `main` resta intatta e non viene rilicenziata da questa modifica. Nell’app: **Dati, fonte e licenze → Licenze e codice sorgente**.
+Questa edizione è GPL-3.0-or-later, con testo integrale e attribuzioni nel repository e nell’APK. AndroidX/Media3: Apache 2.0. Il dialogo licenze collega il commit esatto di compilazione. Le versioni precedenti non vengono modificate da questo ramo.
 
-## Calibrazione e limiti scientifici
-
-Il profilo predefinito è **Samsung Galaxy S6 Edge**, non una calibrazione automatica del telefono su cui gira l’app; può essere cambiato dal selettore. È basato sulla tabella DNG NLF di [SIDD](https://abdokamel.github.io/sidd/), Abdelhamed, Lin, Brown, CVPR 2018, distribuita con licenza MIT.
-
-Fonte fissata al commit [7759f112](https://github.com/AbdoKamel/abdokamel.github.io/blob/7759f112db725fb68cf89c28432cfd2baea90cb0/sidd/files/noise_level_functions.csv). Il JSON `app/src/main/assets/sidd_s6.json` contiene una riga rappresentativa per ISO 100, 200, 400, 800, 1600 e 3200, identificativo della scena e coefficienti RGB originali. Gli ISO intermedi usano interpolazione in log ISO; fuori intervallo non si estrapola. Per S6 tutti i beta2 pubblicati sono zero: l’app li conserva, senza inventare coefficienti di lettura.
-
-Il modello di varianza è `beta1 * segnale_lineare + beta2`. Lo shader usa campioni gaussiani indipendenti per canale e timestamp, scalati con questa varianza. È un’approssimazione gaussiana del rumore dipendente dal segnale, non un campionatore Poisson esatto. La quantità di rumore regola la deviazione standard nella modalità classica. La modalità naturale conserva questi coefficienti come scala di partenza, ma cambia correlazioni spaziali e miscela luma/croma tramite controlli creativi: non è un nuovo profilo calibrato del sensore. La dimensione viene adattata all’altezza sorgente, con limite minimo di un pixel sorgente. A risoluzioni basse più valori fini possono quindi produrre lo stesso risultato.
-
-L’esportazione richiede 8 Mbps fino a 720p e 16 Mbps oltre 720p per preservare meglio la grana; il codec può adattare il valore ai limiti del dispositivo. File più grandi richiedono più spazio temporaneo sul telefono. L’esposizione e lo sviluppo seguono il rumore.
-
-**Un video decodificato non è un RAW:** contiene già demosaicizzazione, denoise, sharpening, tone mapping, compressione e rumore della ripresa. I coefficienti RAW sono applicati all’RGB lineare della pipeline Media3 come approssimazione sperimentale, senza ricostruzione Bayer e senza inversione dell’ISP. Non si promette una replica dell’ISP Samsung, né una misurazione del sensore sorgente. Temperatura e preset sono regolazioni creative, non matrici colore calibrate.
+Un MP4 contiene già sviluppo colore, denoise, nitidezza e compressione. Lo shader usa RGB lineare Media3 come approssimazione del segnale, senza ricostruire Bayer/RAW, ottica, movimento, rolling shutter o l’ISP proprietario Samsung. Non può trasformare un filmato AI in una ripresa autenticamente acquisita da un S6 Edge, né garantire identità statistica con quel dispositivo. Può aggiungere un rumore simulato più plausibile; difetti geometrici o movimenti incoerenti del video restano.
 
 ## Verifica automatica
 
-La pipeline compila APK e test, esegue Android lint e avvia un emulatore Android 15. I test strumentali verificano i coefficienti pubblicati e producono veri MP4 attraverso codec e shader GL: esposizione e rumore devono cambiare i pixel estratti dal file; bypass e metà originale del confronto devono preservarli. Verificano anche durata e decodifica dei file. Una prova apre anche l’app, riproduce una clip ed esporta dal modello applicativo; acquisisce una schermata per la verifica visiva. Sono aggiunte prove su dimensione e componente colore della grana, rinnovo nel tempo e ripristino della modalità classica, catalogo darktable e coefficienti di riferimento, cambiamento dei pixel esportati al cambio fotocamera e selezione reale tramite interfaccia (Nord 3 → S6 Edge). I report sono artefatti della build. L’emulatore non sostituisce le prove su un Samsung fisico, specialmente per HEVC/HDR, file lunghi e stabilità termica.
+GitHub Actions compila APK, test e lint e avvia Android 15 con GPU software. Prove con veri shader GL, codec Android e fotogrammi estratti dai MP4: rumore, esposizione, denoise, luma/croma, dimensione, rinnovo, riproducibilità/semi differenti, componente nelle zone nere, curve ombre/alte luci, dipendenza dal segnale, correlazione temporale. Verifiche anche su coefficienti originali, catalogo, selezione profilo via UI, importazione/anteprima in pausa/esportazione tramite il modello applicativo. Report e schermata sono artefatti della build. Nessuna equivalenza con un test prestazionale sul Samsung fisico.
 
-Stack: Kotlin 2.0.21, Compose, Media3 1.5.1, Java 17, Gradle 8.9, AGP 8.7.3, SDK 35. GitHub Actions si avvia a ogni push su natural-grain-v0.3, pull request o tramite Run workflow.
+Stack conservato: Kotlin 2.0.21, Compose, Media3 1.5.1, Java 17, Gradle 8.9, AGP 8.7.3, SDK 35. Push su `edge-capture-v0.4`, PR o avvio manuale attivano la build.

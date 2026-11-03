@@ -86,6 +86,7 @@ class SensorPipelineTest {
         val original = LabSettings(profileId = "darktable:Canon:EOS R6", iso = 6400f, noise = 1.2f, exposure = -1f, denoise = 0.4f,
             naturalGrain = false, grainSize = 8.5f, grainLuma = 0.4f, grainChroma = 0.8f,
             grainSoftness = 0.3f, grainRate = 12f,
+            captureMode = true, noiseSeed = 718391, readNoise = 0.012f, shadowGain = 2.4f, highlightProtect = 0.8f, temporalCoherence = 0.9f,
             compare = true, original = true)
         val restored = LabSettings.fromJson(original.toJson())
         assertEquals(original.copy(compare = false, original = false), restored)
@@ -117,7 +118,7 @@ class SensorPipelineTest {
     }
 
     @Test fun appOpensVideoAndSavesProcessedResult() {
-        assertEquals("New app must install alongside version 0.2", "com.galaxysensorlab.grain", context.packageName)
+        assertEquals("Third app must install alongside versions 0.2 and 0.3", "com.galaxysensorlab.edgecapture", context.packageName)
         val png = createInput()
         val source = File(context.cacheDir, "ui-source.mp4")
         render(png, LabSettings(noise = 0f), source).recycle()
@@ -161,7 +162,7 @@ class SensorPipelineTest {
                 val values = ContentValues().apply {
                     put(MediaStore.Images.Media.DISPLAY_NAME, "lab-video.png")
                     put(MediaStore.Images.Media.MIME_TYPE, "image/png")
-                    put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/GalaxySensorLab-Grain-tests")
+                    put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/GalaxySensorLab-Edge-Capture-tests")
                 }
                 val imageUri = requireNotNull(context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values))
                 requireNotNull(context.contentResolver.openOutputStream(imageUri)).use {
@@ -229,6 +230,95 @@ class SensorPipelineTest {
         input.delete()
     }
 
+    @Test fun newTakeIsRandomButTheSameTakeIsRepeatable() {
+        val first = NoiseSeeds.next()
+        val second = NoiseSeeds.next(first)
+        assertNotEquals(first, second)
+        val input = createInput(flat = true)
+        val settings = LabSettings(iso = 1600f, noise = 1.3f, noiseSeed = first, grainChroma = 0f)
+        val a = render(input, settings)
+        val repeat = render(input, settings)
+        val another = render(input, settings.copy(noiseSeed = second))
+        assertTrue("One take must reproduce the exported sequence", meanDifference(a,repeat) < 2)
+        assertTrue("New take must change actual exported pixels", meanDifference(a,another) > 3)
+        listOf(a,repeat,another).forEach { it.recycle() }; input.delete()
+    }
+
+    @Test fun extraReadNoiseReachesBlackWithoutChangingPublishedSiddData() {
+        val input = createInput(flat = true, level = 0)
+        val settings = LabSettings(iso = 100f, noise = 2f, readNoise = 0f, grainChroma = 0f,
+            shadowGain = 1f, highlightProtect = 0f)
+        val black = render(input, settings)
+        val withRead = render(input, settings.copy(readNoise = 0.02f))
+        assertTrue("Extra read floor must add actual shadow noise", meanDifference(black,withRead) > 3)
+        assertEquals(0f, calibration.at(100f).read[1], 0f)
+        black.recycle(); withRead.recycle(); input.delete()
+    }
+
+    @Test fun shadowAndHighlightControlsAffectOnlyTheirTonalRanges() {
+        val dark = createInput(flat = true, level = 30)
+        val light = createInput(flat = true, level = 230)
+        val settings = LabSettings(iso = 1600f, noise = 1f, grainChroma = 0f, shadowGain = 1f,
+            highlightProtect = 0f, noiseSeed = 321)
+        val darkBase = render(dark,settings.copy(noise = 0f))
+        val darkLow = render(dark,settings.copy(shadowGain = 0f))
+        val darkHigh = render(dark,settings.copy(shadowGain = 3f))
+        val brightBase = render(light,settings.copy(noise = 0f))
+        val brightNoProtect = render(light,settings)
+        val brightProtected = render(light,settings.copy(highlightProtect = 1f))
+        assertTrue("Shadow strength must change shadow noise", meanDifference(darkBase,darkHigh) > meanDifference(darkBase,darkLow)+2)
+        assertTrue("Highlight protection must reduce highlight noise", meanDifference(brightBase,brightProtected) < meanDifference(brightBase,brightNoProtect)*0.8)
+        listOf(darkBase,darkLow,darkHigh,brightBase,brightNoProtect,brightProtected).forEach { it.recycle() }
+        dark.delete(); light.delete()
+    }
+
+    @Test fun temporalCoherenceCorrelatesAdjacentNoiseWithoutFreezingIt() {
+        val input = createInput(flat = true)
+        val settings = LabSettings(iso = 3200f, noise = 1.2f, noiseSeed = 97, grainChroma = 0f,
+            grainRate = 24f, temporalCoherence = 0f)
+        val a = render(input,settings,sampleTimeUs = 250_000)
+        val b = render(input,settings,sampleTimeUs = 291_667)
+        val c = render(input,settings.copy(temporalCoherence = 1f),sampleTimeUs = 250_000)
+        val d = render(input,settings.copy(temporalCoherence = 1f),sampleTimeUs = 291_667)
+        val independent = correlation(a,b)
+        val coherent = correlation(c,d)
+        assertTrue("Adjacent correlation must increase: independent=$independent coherent=$coherent", coherent > independent+0.15)
+        assertTrue("Coherent noise must still evolve", meanDifference(c,d) > 2)
+        listOf(a,b,c,d).forEach { it.recycle() }; input.delete()
+    }
+
+    @Test fun photonVarianceGrowsWithLinearBrightness() {
+        val dark = createInput(flat = true,level = 60)
+        val bright = createInput(flat = true,level = 160)
+        val settings = LabSettings(iso = 400f, noise = 1f, readNoise = 0f, grainChroma = 0f,
+            shadowGain = 1f, highlightProtect = 0f, temporalCoherence = 0f, noiseSeed = 682)
+        val a = render(dark,settings)
+        val b = render(bright,settings)
+        val va = approximateLinearVariance(a)
+        val vb = approximateLinearVariance(b)
+        assertTrue("Photon variance must grow with signal: dark=$va bright=$vb", vb > va*1.5)
+        a.recycle(); b.recycle(); dark.delete(); bright.delete()
+    }
+
+    private fun approximateLinearVariance(bitmap: Bitmap): Double {
+        var sum=0.0; var squared=0.0; var n=0
+        for(y in 12 until bitmap.height-12 step 2) for(x in 12 until bitmap.width-12 step 2) {
+            // Inverse display gamma approximation; used only to compare broad variance ranges.
+            val v=Math.pow(Color.red(bitmap.getPixel(x,y))/255.0,2.2)
+            sum+=v; squared+=v*v; n++
+        }
+        return squared/n-(sum/n)*(sum/n)
+    }
+
+    private fun correlation(a: Bitmap,b: Bitmap): Double {
+        var sx=0.0; var sy=0.0; var sxx=0.0; var syy=0.0; var sxy=0.0; var n=0
+        for(y in 12 until a.height-12 step 2) for(x in 12 until a.width-12 step 2) {
+            val p=Color.red(a.getPixel(x,y)).toDouble(); val q=Color.red(b.getPixel(x,y)).toDouble()
+            sx+=p; sy+=q; sxx+=p*p; syy+=q*q; sxy+=p*q; n++
+        }
+        return (sxy-sx*sy/n)/kotlin.math.sqrt((sxx-sx*sx/n)*(syy-sy*sy/n))
+    }
+
     private fun roughness(bitmap: Bitmap): Double {
         var total = 0.0; var count = 0
         for (y in 12 until bitmap.height-12) for (x in 12 until bitmap.width-13) {
@@ -248,10 +338,10 @@ class SensorPipelineTest {
         return total/count
     }
 
-    private fun createInput(flat: Boolean = false): File {
+    private fun createInput(flat: Boolean = false, level: Int = 100): File {
         val bitmap = Bitmap.createBitmap(320, 240, Bitmap.Config.ARGB_8888)
         for (y in 0 until bitmap.height) for (x in 0 until bitmap.width) {
-            val gray = if (flat) 100 else 60 + x * 70 / bitmap.width
+            val gray = if (flat) level else 60 + x * 70 / bitmap.width
             bitmap.setPixel(x, y, Color.rgb(gray, if (flat) gray else gray + y * 30 / bitmap.height, gray))
         }
         return File.createTempFile("input", ".png", context.cacheDir).also { file ->

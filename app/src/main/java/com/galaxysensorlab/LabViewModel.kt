@@ -79,7 +79,12 @@ class LabViewModel(application: Application) : AndroidViewModel(application) {
     private var loadJob: Job? = null
 
     init {
+        if (!prefs.contains("settings")) update(settings.copy(noiseSeed = NoiseSeeds.next()))
         prefs.getString("video", null)?.let { loadVideo(Uri.parse(it)) }
+    }
+
+    fun newTake() {
+        if (!busy) update(settings.copy(noiseSeed = NoiseSeeds.next(settings.noiseSeed)))
     }
 
     fun update(value: LabSettings) {
@@ -133,6 +138,7 @@ class LabViewModel(application: Application) : AndroidViewModel(application) {
                 sourceHeight = info.third
                 resultUri = null
                 message = null
+                newTake()
                 player.setMediaItem(MediaItem.fromUri(uri))
                 player.prepare()
                 player.playWhenReady = true

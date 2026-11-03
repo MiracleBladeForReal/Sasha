@@ -9,6 +9,12 @@ data class LabSettings(
     val profileId: String = "sidd:s6",
     val iso: Float = 800f,
     val noise: Float = 0.7f,
+    val captureMode: Boolean = true,
+    val noiseSeed: Int = 0,
+    val readNoise: Float = 0.001f,
+    val shadowGain: Float = 1.2f,
+    val highlightProtect: Float = 0.5f,
+    val temporalCoherence: Float = 0.35f,
     val naturalGrain: Boolean = true,
     val grainSize: Float = 2f,
     val grainLuma: Float = 1f,
@@ -27,6 +33,9 @@ data class LabSettings(
     val split: Float = 0.5f
 ) {
     fun toJson(): String = JSONObject().apply {
+        put("captureMode", captureMode); put("noiseSeed", noiseSeed)
+        put("readNoise", readNoise); put("shadowGain", shadowGain)
+        put("highlightProtect", highlightProtect); put("temporalCoherence", temporalCoherence)
         put("profileId", profileId); put("iso", iso); put("noise", noise); put("exposure", exposure)
         put("naturalGrain", naturalGrain); put("grainSize", grainSize)
         put("grainLuma", grainLuma); put("grainChroma", grainChroma)
@@ -40,6 +49,12 @@ data class LabSettings(
             val j = JSONObject(text)
             return LabSettings(
                 profileId = j.optString("profileId", "sidd:s6"),
+                captureMode = j.optBoolean("captureMode", true),
+                noiseSeed = j.optInt("noiseSeed", 0).coerceIn(0, 1_048_575),
+                readNoise = j.optDouble("readNoise", 0.001).toFloat().coerceIn(0f, 0.02f),
+                shadowGain = j.optDouble("shadowGain", 1.2).toFloat().coerceIn(0f, 3f),
+                highlightProtect = j.optDouble("highlightProtect", 0.5).toFloat().coerceIn(0f, 1f),
+                temporalCoherence = j.optDouble("temporalCoherence", 0.35).toFloat().coerceIn(0f, 1f),
                 iso = j.optDouble("iso", 800.0).toFloat().coerceIn(1f, 10_000_000f),
                 noise = j.optDouble("noise", 0.7).toFloat().coerceIn(0f, 2f),
                 naturalGrain = j.optBoolean("naturalGrain", true),
@@ -155,5 +170,15 @@ class NoiseCalibration(context: Context) {
         val p = at(iso, profileId)
         // Negative fitted offsets are valid in the source data. Clamp the final variance only.
         return sqrt((p.shot[1] * signal.coerceAtLeast(0f) + p.read[1]).coerceAtLeast(0f))
+    }
+}
+
+/** A fresh OS-seeded realization; reproducible shader sampling keeps preview and export consistent. */
+object NoiseSeeds {
+    private val random = java.security.SecureRandom()
+    fun next(previous: Int = -1): Int {
+        var next: Int
+        do { next = random.nextInt(1 shl 20) } while (next == previous)
+        return next
     }
 }

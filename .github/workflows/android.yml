@@ -1,8 +1,8 @@
-name: Build Galaxy Sensor Lab Grain APK
+name: Build Galaxy Sensor Lab Edge Capture APK
 
 on:
   push:
-    branches: [natural-grain-v0.3]
+    branches: [edge-capture-v0.4]
   pull_request:
   workflow_dispatch:
 
@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: grain-android-${{ github.ref }}
+  group: edge-android-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -42,7 +42,7 @@ jobs:
       - name: Upload installable APK
         uses: actions/upload-artifact@v4
         with:
-          name: GalaxySensorLab-Grain-debug-apk
+          name: GalaxySensorLab-Edge-Capture-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30
@@ -68,7 +68,7 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
           script: |
             gradle :app:connectedDebugAndroidTest --no-daemon --stacktrace
-            adb pull /sdcard/Pictures/GalaxySensorLab-Grain-tests app/build/screenshots
+            adb pull /sdcard/Pictures/GalaxySensorLab-Edge-Capture-tests app/build/screenshots
       - name: Upload device test results
         if: always()
         uses: actions/upload-artifact@v4

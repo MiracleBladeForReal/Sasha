@@ -9,13 +9,13 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.galaxysensorlab.grain"
+        applicationId = "com.galaxysensorlab.edgecapture"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "0.3"
+        versionCode = 4
+        versionName = "0.4"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        buildConfigField("String", "SOURCE_COMMIT", "\"${System.getenv("GITHUB_SHA") ?: "natural-grain-v0.3"}\"")
+        buildConfigField("String", "SOURCE_COMMIT", "\"${System.getenv("GITHUB_SHA") ?: "edge-capture-v0.4"}\"")
     }
     buildTypes { release { isMinifyEnabled = false } }
     compileOptions {

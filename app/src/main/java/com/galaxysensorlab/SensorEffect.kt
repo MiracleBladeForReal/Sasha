@@ -48,6 +48,12 @@ private class SensorProgram(
             program.setFloatsUniform("uRead", n.read)
             program.setFloatUniform("uTime", (presentationTimeUs % 3_600_000_000L) / 1_000_000f)
             program.setFloatUniform("uNoise", s.noise)
+            program.setFloatsUniform("uSeed", floatArrayOf((s.noiseSeed % 1024).toFloat(), (s.noiseSeed / 1024).toFloat()))
+            program.setFloatUniform("uCapture", if (s.captureMode && s.naturalGrain) 1f else 0f)
+            program.setFloatUniform("uReadFloor", s.readNoise)
+            program.setFloatUniform("uShadowGain", s.shadowGain)
+            program.setFloatUniform("uHighlightProtect", s.highlightProtect)
+            program.setFloatUniform("uCoherence", s.temporalCoherence)
             program.setFloatUniform("uNaturalGrain", if (s.naturalGrain) 1f else 0f)
             // Reference-pixel size keeps the look consistent after the export resize.
             program.setFloatUniform("uGrainSize", maxOf(1f, s.grainSize * height / 1080f))
@@ -90,6 +96,8 @@ private class SensorProgram(
             precision highp float;
             uniform sampler2D uTex;
             uniform vec2 uPixel;
+            uniform vec2 uSeed;
+            uniform float uCapture, uReadFloor, uShadowGain, uHighlightProtect, uCoherence;
             uniform vec3 uShot;
             uniform vec3 uRead;
             uniform float uTime, uNoise, uExposure, uWarmth, uSaturation, uContrast;
@@ -98,7 +106,9 @@ private class SensorProgram(
             uniform float uGrainSoftness, uGrainRate;
             varying vec2 vUv;
             float random(vec2 p, float seed) {
-                return fract(sin(dot(p, vec2(12.9898,78.233)) + seed) * 43758.5453);
+                vec3 h = fract(vec3(p + uSeed * vec2(17.17, 31.31), seed) * 0.1031);
+                h += dot(h, h.yzx + 33.33);
+                return fract((h.x + h.y) * h.z);
             }
             float gaussian(vec2 p, float seed) {
                 float a = max(random(p, seed), 0.0001);
@@ -117,8 +127,72 @@ private class SensorProgram(
                                     gaussian(cell+vec2(0.0,1.0), seed), gaussian(cell+vec2(1.0,1.0), seed));
                 return dot(w, samples) / max(sqrt(dot(w,w)), 0.001);
             }
+            // Knuth Poisson sampling at low photon counts, normal approximation above 12.
+            // Returns a standardized, zero-mean residual. No wall-clock dependence.
+            float photonResidual(vec2 p, float seed, float lambda) {
+                if (lambda < 0.00001) return 0.0;
+                if (lambda >= 12.0) return gaussian(p, seed);
+                float threshold = exp(-lambda);
+                float product = 1.0;
+                for (int i=0; i<64; i++) {
+                    product *= max(random(p + vec2(float(i)*7.13, float(i)*19.37), seed+float(i)*3.71), 0.000001);
+                    if (product <= threshold) return (float(i)-lambda) / sqrt(lambda);
+                }
+                return gaussian(p, seed);
+            }
+            float captureSample(vec2 p, float seed, float lambda) {
+                return lambda < 0.0 ? gaussian(p, seed) : photonResidual(p, seed, lambda);
+            }
+            float captureField(vec2 p, float seed, float lambda) {
+                vec2 cell = floor(p);
+                vec2 f = fract(p);
+                vec2 blend = mix(step(vec2(0.5), f), f*f*(3.0-2.0*f), uGrainSoftness);
+                vec4 w = vec4((1.0-blend.x)*(1.0-blend.y), blend.x*(1.0-blend.y),
+                              (1.0-blend.x)*blend.y, blend.x*blend.y);
+                vec4 samples = vec4(captureSample(cell,seed,lambda),captureSample(cell+vec2(1.0,0.0),seed,lambda),
+                                    captureSample(cell+vec2(0.0,1.0),seed,lambda),captureSample(cell+vec2(1.0,1.0),seed,lambda));
+                return dot(w,samples) / max(sqrt(dot(w,w)), 0.001);
+            }
+            float evolvingField(vec2 p, float frame, float channel, float lambda) {
+                float now = captureField(p, frame*3.17+channel, lambda);
+                if (uCoherence < 0.001) return now;
+                float previous = captureField(p, (frame-1.0)*3.17+channel, lambda);
+                return (now + uCoherence*previous) / sqrt(1.0+uCoherence*uCoherence);
+            }
+            float channelNoise(vec2 p, float signal, float shot, float read, float frame, float channel) {
+                float a = max(shot, 0.0);
+                float shotVariance = a * signal;
+                float result = 0.0;
+                if (shotVariance > 0.000000001) {
+                    result = sqrt(shotVariance) * evolvingField(p, frame, channel, signal/max(a,0.000000001));
+                }
+                float readVariance = max(read,0.0) + uReadFloor*uReadFloor;
+                if (readVariance > 0.0000000001) {
+                    result += sqrt(readVariance) * evolvingField(p, frame, channel+409.0, -1.0);
+                }
+                return result;
+            }
+            vec3 captureNoise(vec2 uv, vec3 signal) {
+                vec3 weights = vec3(0.2126,0.7152,0.0722);
+                float y = dot(signal,weights);
+                vec2 p = uv / uPixel / uGrainSize;
+                float frame = floor(uTime * uGrainRate + 0.001);
+                float mono = channelNoise(p,y,dot(uShot,weights),dot(uRead,weights),frame,0.0);
+                vec3 chroma = vec3(0.0);
+                if (uGrainChroma > 0.0) {
+                    chroma = vec3(channelNoise(p*0.65,signal.r,uShot.r,uRead.r,frame,71.0),
+                                  channelNoise(p*0.65,signal.g,uShot.g,uRead.g,frame,137.0),
+                                  channelNoise(p*0.65,signal.b,uShot.b,uRead.b,frame,211.0));
+                    chroma -= vec3(dot(chroma,weights));
+                }
+                float shadows = mix(uShadowGain,1.0,smoothstep(0.005,0.18,y));
+                float highlights = 1.0-uHighlightProtect*smoothstep(0.55,0.98,y);
+                return (vec3(mono)*uGrainLuma + chroma*uGrainChroma) * uNoise * shadows * highlights;
+            }
             vec3 sensor(vec2 uv) {
                 vec3 signal = max(texture2D(uTex, clamp(uv, 0.0, 1.0)).rgb, 0.0);
+                if (uNoise <= 0.0) return signal;
+                if (uCapture > 0.5) return signal + captureNoise(uv, signal);
                 vec3 variance = max(uShot * signal + uRead, 0.0);
                 if (uNaturalGrain > 0.5) {
                     vec2 p = uv / uPixel / uGrainSize;
