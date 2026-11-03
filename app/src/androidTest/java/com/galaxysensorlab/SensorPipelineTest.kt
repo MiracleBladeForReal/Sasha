@@ -60,7 +60,7 @@ class SensorPipelineTest {
         val b = calibration.at(125f, id)
         val mid = calibration.at(112.5f, id)
         assertEquals((a.shot[1]+b.shot[1])*0.5f, mid.shot[1], 1e-12f)
-        assertEquals(a.shot[1], calibration.at(1f,id).shot[1], 0f)
+        assertEquals(calibration.at(50f,id).shot[1], calibration.at(1f,id).shot[1], 0f)
         assertTrue(calibration.search("oneplus nord 3").any { it.model == "OnePlus Nord 3 5G" })
         assertTrue(calibration.search("samsung nx1").any { it.model == "NX1" })
         assertEquals(NoiseCalibration.DEFAULT_PROFILE, calibration.profile("missing").id)
