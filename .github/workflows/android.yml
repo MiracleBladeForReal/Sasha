@@ -67,8 +67,11 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
           script: |
-            gradle :app:connectedDebugAndroidTest --no-daemon --stacktrace
-            adb pull /sdcard/Pictures/GalaxySensorLab-tests app/build/screenshots
+            test_status=0
+            gradle :app:connectedDebugAndroidTest --no-daemon --stacktrace || test_status=$?
+            adb pull /sdcard/Pictures/GalaxySensorLab-tests app/build/screenshots || true
+            adb logcat -d > app/build/emulator-logcat.txt
+            exit "$test_status"
       - name: Upload device test results
         if: always()
         uses: actions/upload-artifact@v4
@@ -77,4 +80,6 @@ jobs:
           path: |
             app/build/reports/androidTests/connected/
             app/build/screenshots/
+            app/build/emulator-logcat.txt
           if-no-files-found: ignore
+

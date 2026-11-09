@@ -164,33 +164,38 @@ class SensorPipelineTest {
                 ref.get().update(LabSettings(noise = 0f, exposure = 1.5f,
                     jpegEnabled = true, jpegAmount = 1f))
             }
-            Thread.sleep(700)
-            val jpegPreview = instrumentation.uiAutomation.takeScreenshot()
-            var jpegDelta = 0.0
-            var jpegSamples = 0
-            for (y in jpegPreview.height / 5 until jpegPreview.height / 3 step 4) {
-                for (x in jpegPreview.width / 3 until jpegPreview.width * 2 / 3 step 4) {
-                    val p = jpegPreview.getPixel(x, y)
-                    val q = screenshot.getPixel(x, y)
-                    jpegDelta += abs(Color.red(p) - Color.red(q)) +
-                        abs(Color.green(p) - Color.green(q)) + abs(Color.blue(p) - Color.blue(q))
-                    jpegSamples += 3
+            // First activation compiles four shaders on the GL thread. Wait for actual
+            // pixels rather than assuming every device finishes within 700 ms.
+            val jpegDeadline = System.currentTimeMillis() + 15000
+            var jpegPreview: Bitmap
+            var jpegDelta: Double
+            do {
+                Thread.sleep(250)
+                jpegPreview = instrumentation.uiAutomation.takeScreenshot()
+                var delta = 0.0
+                var samples = 0
+                for (y in jpegPreview.height / 5 until jpegPreview.height / 3 step 4) {
+                    for (x in jpegPreview.width / 3 until jpegPreview.width * 2 / 3 step 4) {
+                        val p = jpegPreview.getPixel(x, y)
+                        val q = screenshot.getPixel(x, y)
+                        delta += abs(Color.red(p) - Color.red(q)) +
+                            abs(Color.green(p) - Color.green(q)) + abs(Color.blue(p) - Color.blue(q))
+                        samples += 3
+                    }
                 }
+                jpegDelta = delta / samples
+                if (jpegDelta > 2.0 || System.currentTimeMillis() >= jpegDeadline) break
+                jpegPreview.recycle()
+            } while (true)
+            saveScreenshot(screenshot, "before-jpeg.png")
+            saveScreenshot(jpegPreview, "after-jpeg.png")
+            scenario.onActivity {
+                assertNull("Player error after JPEG activation: ${ref.get().message}", ref.get().player.playerError)
             }
-            assertTrue("Paused preview must redraw after enabling JPEG", jpegDelta / jpegSamples > 2.0)
+            assertTrue("Paused preview must redraw after enabling JPEG; pixel delta=$jpegDelta", jpegDelta > 2.0)
             screenshot.recycle()
             screenshot = jpegPreview
-            if (Build.VERSION.SDK_INT >= 29) {
-                val values = ContentValues().apply {
-                    put(MediaStore.Images.Media.DISPLAY_NAME, "lab-video.png")
-                    put(MediaStore.Images.Media.MIME_TYPE, "image/png")
-                    put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/GalaxySensorLab-tests")
-                }
-                val imageUri = requireNotNull(context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values))
-                requireNotNull(context.contentResolver.openOutputStream(imageUri)).use {
-                    screenshot.compress(Bitmap.CompressFormat.PNG, 100, it)
-                }
-            }
+            saveScreenshot(screenshot, "lab-video.png")
             screenshot.recycle()
             scenario.onActivity {
                 val model = ref.get()
@@ -212,6 +217,19 @@ class SensorPipelineTest {
         }
         png.delete(); source.delete(); destination.delete()
         context.getSharedPreferences("lab", 0).edit().clear().commit()
+    }
+
+    private fun saveScreenshot(bitmap: Bitmap, name: String) {
+        if (Build.VERSION.SDK_INT < 29) return
+        val values = ContentValues().apply {
+            put(MediaStore.Images.Media.DISPLAY_NAME, name)
+            put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+            put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/GalaxySensorLab-tests")
+        }
+        val uri = requireNotNull(context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values))
+        requireNotNull(context.contentResolver.openOutputStream(uri)).use {
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
+        }
     }
 
     private fun createDetailedInput(w: Int = 320, h: Int = 240): File {
