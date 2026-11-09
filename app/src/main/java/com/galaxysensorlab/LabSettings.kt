@@ -15,11 +15,14 @@ data class LabSettings(
     val denoise: Float = 0f,
     val sharpness: Float = 0f,
     val vignette: Float = 0f,
+    val jpegEnabled: Boolean = false,
+    val jpegAmount: Float = 0.5f,
     val compare: Boolean = false,
     val original: Boolean = false,
     val split: Float = 0.5f
 ) {
     fun toJson(): String = JSONObject().apply {
+        put("jpegEnabled", jpegEnabled); put("jpegAmount", jpegAmount)
         put("iso", iso); put("noise", noise); put("exposure", exposure)
         put("warmth", warmth); put("saturation", saturation); put("contrast", contrast)
         put("denoise", denoise); put("sharpness", sharpness); put("vignette", vignette)
@@ -29,6 +32,10 @@ data class LabSettings(
         fun fromJson(text: String): LabSettings {
             val j = JSONObject(text)
             return LabSettings(
+                jpegEnabled = j.optBoolean("jpegEnabled", false),
+                jpegAmount = j.optDouble("jpegAmount", 0.5).toFloat().let {
+                    if (it.isFinite()) it.coerceIn(0f, 1f) else 0.5f
+                },
                 iso = j.optDouble("iso", 800.0).toFloat().coerceIn(100f, 3200f),
                 noise = j.optDouble("noise", 0.7).toFloat().coerceIn(0f, 2f),
                 exposure = j.optDouble("exposure", 0.0).toFloat().coerceIn(-3f, 3f),
@@ -77,3 +84,4 @@ class NoiseCalibration(context: Context) {
         return sqrt(p.shot[1] * signal.coerceAtLeast(0f) + p.read[1])
     }
 }
+

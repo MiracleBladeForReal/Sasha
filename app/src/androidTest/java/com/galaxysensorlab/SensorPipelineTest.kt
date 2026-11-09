@@ -50,7 +50,7 @@ class SensorPipelineTest {
 
     @Test fun settingsSurviveSavingWithoutPreviewBypass() {
         val original = LabSettings(iso = 1600f, noise = 1.2f, exposure = -1f, denoise = 0.4f,
-            compare = true, original = true)
+            jpegEnabled = true, jpegAmount = 0.73f, compare = true, original = true)
         val restored = LabSettings.fromJson(original.toJson())
         assertEquals(original.copy(compare = false, original = false), restored)
     }
@@ -78,6 +78,46 @@ class SensorPipelineTest {
         assertTrue(meanDifference(base, split, 0, base.width / 3) < 3)
         assertTrue(meanDifference(base, split, base.width * 2 / 3, base.width) > 12)
         base.recycle(); split.recycle(); input.delete()
+    }
+
+    @Test fun jpegDefaultsAndBoundsRemainCompatible() {
+        val old = LabSettings.fromJson("{}")
+        assertFalse(old.jpegEnabled)
+        assertEquals(0.5f, old.jpegAmount, 0f)
+        assertEquals(1f, LabSettings.fromJson("{\"jpegAmount\":7}").jpegAmount, 0f)
+        assertEquals(0f, LabSettings.fromJson("{\"jpegAmount\":-2}").jpegAmount, 0f)
+    }
+
+    @Test fun jpegChangesRealPixelsAndHonorsZeroBypassAndComparison() {
+        val input = createDetailedInput()
+        val clean = LabSettings(noise = 0f)
+        val jpeg = clean.copy(jpegEnabled = true, jpegAmount = 1f)
+        val base = render(input, clean)
+        val compressed = render(input, jpeg)
+        val mild = render(input, jpeg.copy(jpegAmount = 0.05f))
+        val zero = render(input, jpeg.copy(jpegAmount = 0f))
+        val disabled = render(input, jpeg.copy(jpegEnabled = false))
+        val original = render(input, jpeg.copy(original = true, exposure = 1.5f))
+        val split = render(input, jpeg.copy(compare = true, split = 0.47f))
+        assertTrue("JPEG must degrade actual exported detail", meanDifference(base, compressed) > 3)
+        assertTrue("Mild JPEG must preserve more detail than strong JPEG",
+            meanDifference(base, mild) < meanDifference(base, compressed))
+        assertTrue("Zero must bypass JPEG", meanDifference(base, zero) < 3)
+        assertTrue("Disabled JPEG must bypass", meanDifference(base, disabled) < 3)
+        assertTrue("Original must bypass JPEG and development", meanDifference(base, original) < 3)
+        assertTrue("Comparison left must preserve the original", meanDifference(base, split, 0, base.width / 3) < 3)
+        assertTrue("Comparison right must contain JPEG", meanDifference(base, split, base.width * 2 / 3) > 3)
+        listOf(base, compressed, mild, zero, disabled, original, split).forEach { it.recycle() }
+        input.delete()
+    }
+
+    @Test fun jpegHandlesPartialBlocksAtTheImageEdges() {
+        val input = createDetailedInput(318, 238)
+        val bitmap = render(input, LabSettings(noise = 0f, jpegEnabled = true, jpegAmount = 0.8f))
+        assertEquals(318, bitmap.width)
+        assertEquals(238, bitmap.height)
+        assertTrue("Padded edge must not turn black", Color.red(bitmap.getPixel(317, 237)) > 10)
+        bitmap.recycle(); input.delete()
     }
 
     @Test fun appOpensVideoAndSavesProcessedResult() {
@@ -134,7 +174,7 @@ class SensorPipelineTest {
             screenshot.recycle()
             scenario.onActivity {
                 val model = ref.get()
-                model.update(LabSettings(noise = 0.5f, exposure = 0.5f))
+                model.update(LabSettings(noise = 0.5f, exposure = 0.5f, jpegEnabled = true, jpegAmount = 0.8f))
                 model.exportHeight = 720
                 model.export(Uri.fromFile(destination))
             }
@@ -152,6 +192,20 @@ class SensorPipelineTest {
         }
         png.delete(); source.delete(); destination.delete()
         context.getSharedPreferences("lab", 0).edit().clear().commit()
+    }
+
+    private fun createDetailedInput(w: Int = 320, h: Int = 240): File {
+        val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        for (y in 0 until h) for (x in 0 until w) {
+            val detail = if ((x / 2 + y / 3) % 2 == 0) 55 else -35
+            val red = (100 + x * 70 / w + detail).coerceIn(0, 255)
+            val green = (110 + y * 50 / h - detail).coerceIn(0, 255)
+            bitmap.setPixel(x, y, Color.rgb(red, green, 140 + detail))
+        }
+        return File.createTempFile("jpeg-detail", ".png", context.cacheDir).also { file ->
+            file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            bitmap.recycle()
+        }
     }
 
     private fun createInput(): File {
@@ -216,3 +270,4 @@ class SensorPipelineTest {
         return total / count
     }
 }
+
