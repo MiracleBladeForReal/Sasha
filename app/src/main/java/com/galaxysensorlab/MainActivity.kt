@@ -18,6 +18,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -69,11 +71,11 @@ private fun LabScreen(model: LabViewModel) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
             Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("GALAXY / SENSOR LAB", style = MaterialTheme.typography.labelMedium,
+                    Text("GALAXY / SENSOR LAB JPEG", style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                     Text("Il tuo video. Un altro carattere.", style = MaterialTheme.typography.titleMedium)
                 }
-                Text("v0.2", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+                Text("v0.3", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
             }
             Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(Color.Black), contentAlignment = Alignment.Center) {
                 if (model.videoUri != null) {
@@ -178,9 +180,24 @@ private fun LabScreen(model: LabViewModel) {
                     LabSlider("Vignettatura", settings.vignette, 0f..1f, percent(settings.vignette), ready) { model.update(settings.copy(vignette = it)) }
                 }
                 item {
+                    SectionLabel("04 / COMPRESSIONE JPEG")
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Compressione JPEG", modifier = Modifier.weight(1f))
+                        Switch(checked = settings.jpegEnabled, enabled = ready,
+                            onCheckedChange = { model.update(settings.copy(jpegEnabled = it)) },
+                            modifier = Modifier.semantics { contentDescription = "Attiva compressione JPEG" })
+                    }
+                    LabSlider("Intensità compressione", settings.jpegAmount, 0f..1f,
+                        percent(settings.jpegAmount), ready && settings.jpegEnabled) {
+                        model.update(settings.copy(jpegAmount = it))
+                    }
+                    Text("Blocchi 8×8, dettagli impastati e aloni. A 0% nessuna compressione aggiunta. Visibile in anteprima e nel video salvato.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                item {
                     Card {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            SectionLabel("04 / ESPORTA MP4")
+                            SectionLabel("05 / ESPORTA MP4")
                             Text("H.264 · audio AAC · effetti applicati all’intero fotogramma", style = MaterialTheme.typography.bodySmall)
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 listOf(720, 1080).forEach { height ->
@@ -197,7 +214,7 @@ private fun LabScreen(model: LabViewModel) {
                                 Text(if (model.saving) "Salvataggio…" else "Elaborazione ${progress?.let { "$it%" } ?: "in corso…"}")
                                 TextButton(onClick = { model.cancelExport() }, enabled = !model.saving) { Text("Annulla esportazione") }
                             } else {
-                                Button(onClick = { exporter.launch("GalaxySensorLab-${System.currentTimeMillis()}.mp4") },
+                                Button(onClick = { exporter.launch("GalaxySensorLab-JPEG-${System.currentTimeMillis()}.mp4") },
                                     enabled = ready, modifier = Modifier.fillMaxWidth()) { Text("Salva video elaborato") }
                             }
                             model.resultUri?.let { uri ->
@@ -268,3 +285,4 @@ private fun LabSlider(label: String, value: Float, range: ClosedFloatingPointRan
 
 private fun format(value: Float) = String.format(Locale.ITALIAN, "%.2f", value)
 private fun percent(value: Float) = "${(value * 100).roundToInt()}%"
+

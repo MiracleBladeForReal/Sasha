@@ -1,4 +1,4 @@
-# Galaxy Sensor Lab 0.2
+# Galaxy Sensor Lab JPEG 0.3
 
 Laboratorio video Android con elaborazione GPU reale, anteprima e salvataggio MP4. Tutto avviene sul telefono, senza caricamenti in rete.
 
@@ -8,6 +8,7 @@ Laboratorio video Android con elaborazione GPU reale, anteprima e salvataggio MP
 - Rumore temporale RGB dipendente dal segnale e dal profilo ISO SIDD Galaxy S6 Edge.
 - Esposizione, temperatura relativa, saturazione e contrasto.
 - Riduzione rumore spaziale adattiva a cinque campioni, nitidezza e vignettatura.
+- Compressione JPEG creativa: interruttore e intensità 0–100%, in anteprima e nel file salvato.
 - Confronto originale/elaborato con separatore regolabile e bypass originale.
 - Preset Pulito, Notte e Cinema; impostazioni salvate automaticamente.
 - Esportazione H.264/AAC in MP4, fino a 720p/1080p senza ingrandire la sorgente, con avanzamento, annullamento, apertura e condivisione.
@@ -16,11 +17,11 @@ Laboratorio video Android con elaborazione GPU reale, anteprima e salvataggio MP
 ## Installazione dal Samsung
 
 1. Apri [Actions](https://github.com/MiracleBladeForReal/Sasha/actions/workflows/android.yml) e l’ultima build verde.
-2. Scarica **GalaxySensorLab-debug-apk** dalla sezione **Artifacts**.
+2. Scarica **GalaxySensorLab-JPEG-debug-apk** dalla sezione **Artifacts**.
 3. Estrai lo ZIP con **Archivio** e apri `app-debug.apk`.
 4. Consenti l’installazione da quella fonte, se richiesta.
 
-Android 8.0 o successivo. APK di sviluppo: le chiavi debug possono cambiare fra runner. In caso di firma incompatibile occorre disinstallare la versione precedente, perdendo le preferenze locali, e poi installare la nuova. Per pubblicare e aggiornare stabilmente servirà una chiave di produzione.
+Android 8.0 o successivo. Questa variante si chiama **Galaxy Sensor Lab JPEG** e usa un identificativo Android distinto (`com.galaxysensorlab.jpeg`). Può essere installata accanto alle altre versioni di Galaxy Sensor Lab, senza sostituirle e senza cancellarne le impostazioni. Le preferenze e il video selezionato sono indipendenti: importa nuovamente la clip nella variante JPEG. È un APK di sviluppo; per aggiornamenti futuri con firma stabile servirà una chiave di produzione.
 
 ## Uso
 
@@ -41,3 +42,16 @@ Il modello di varianza è `beta1 * segnale_lineare + beta2`. Lo shader usa campi
 La pipeline compila APK e test, esegue Android lint e avvia un emulatore Android 15. I test strumentali verificano i coefficienti pubblicati e producono veri MP4 attraverso codec e shader GL: esposizione e rumore devono cambiare i pixel estratti dal file; bypass e metà originale del confronto devono preservarli. Verificano anche durata e decodifica dei file. Una prova apre anche l’app, riproduce una clip ed esporta dal modello applicativo; acquisisce una schermata per la verifica visiva. I report sono artefatti della build. L’emulatore non sostituisce le prove su un Samsung fisico, specialmente per HEVC/HDR, file lunghi e stabilità termica.
 
 Stack: Kotlin 2.0.21, Compose, Media3 1.5.1, Java 17, Gradle 8.9, AGP 8.7.3, SDK 35. GitHub Actions si avvia a ogni push su main, pull request o tramite Run workflow.
+
+
+## Compressione JPEG
+
+Attiva **Compressione JPEG** e regola **Intensità compressione**. A 0% o con l'interruttore spento il passaggio è escluso; disattivare l'effetto conserva l'intensità scelta. Azzera e i preset ripristinano l'effetto spento. Le impostazioni JPEG vengono salvate insieme agli altri controlli.
+
+Dopo lo sviluppo, quattro passaggi GPU eseguono DCT separabile su blocchi fissi 8×8, quantizzazione con tabelle luminanza/crominanza JPEG e DCT inversa. Il trattamento avviene in YCbCr con gamma approssimata 2,2. L'intensità riduce la qualità da 100 a 5, con un ingresso graduale nel primo 10% del cursore. Gli artefatti dipendono dal contenuto; non vengono disegnati quadretti casuali. Non sono inclusi trascinamenti fra fotogrammi, datamoshing o sottocampionamento cromatico 4:2:0. È una simulazione delle perdite JPEG; l'esportazione resta MP4 H.264/AAC.
+
+Coefficienti a 16 bit per canale sono impacchettati in texture RGBA8, senza letture CPU dei fotogrammi e senza richiedere framebuffer floating point. I bordi non multipli di 8 vengono estesi replicando l'ultimo pixel. Il confronto originale/elaborato viene applicato alla fine, preservando la metà originale. L'esportazione applica l'effetto all'intero fotogramma prima del ridimensionamento.
+
+L'effetto usa circa 40 MiB di buffer aggiuntivi per una sorgente 1080p e aumenta il lavoro GPU; fluidità, consumi e limiti di risoluzione vanno verificati sul dispositivo. La dimensione dei blocchi segue i pixel della sorgente: ridimensionando in esportazione anche i blocchi si riducono. Una sorgente che supera i limiti delle texture della GPU non può utilizzare questo effetto.
+
+Verifica aggiuntiva degli shader su Linux/Mesa: con Python, NumPy e libEGL installati, esegui `python3 tools/verify_jpeg_shader.py`. La prova esegue gli shader di produzione e confronta i pixel con una DCT di riferimento indipendente, includendo bordi parziali e orientamenti dei buffer.

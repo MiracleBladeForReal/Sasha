@@ -42,7 +42,7 @@ jobs:
       - name: Upload installable APK
         uses: actions/upload-artifact@v4
         with:
-          name: GalaxySensorLab-debug-apk
+          name: GalaxySensorLab-JPEG-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30
@@ -66,9 +66,7 @@ jobs:
           target: google_apis
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
-          script: |
-            gradle :app:connectedDebugAndroidTest --no-daemon --stacktrace
-            adb pull /sdcard/Pictures/GalaxySensorLab-tests app/build/screenshots
+          script: bash .github/scripts/test-android.sh
       - name: Upload device test results
         if: always()
         uses: actions/upload-artifact@v4
@@ -77,4 +75,6 @@ jobs:
           path: |
             app/build/reports/androidTests/connected/
             app/build/screenshots/
+            app/build/emulator-logcat.txt
           if-no-files-found: ignore
+

@@ -30,6 +30,7 @@ private class SensorProgram(
     private val program = GlProgram(VERTEX, FRAGMENT)
     private var width = 1
     private var height = 1
+    private var jpeg: JpegCompression? = null
     init { program.setBufferAttribute("aFramePosition", GlUtil.getNormalizedCoordinateBounds(), 4) }
 
     override fun configure(inputWidth: Int, inputHeight: Int): Size {
@@ -41,31 +42,37 @@ private class SensorProgram(
         try {
             val s = effect.settings
             val n = calibration.at(s.iso)
-            program.use()
-            program.setSamplerTexIdUniform("uTex", inputTexId, 0)
-            program.setFloatsUniform("uPixel", floatArrayOf(1f / width, 1f / height))
-            program.setFloatsUniform("uShot", n.shot)
-            program.setFloatsUniform("uRead", n.read)
-            program.setFloatUniform("uTime", (presentationTimeUs % 10_000_000L) / 1_000_000f)
-            program.setFloatUniform("uNoise", s.noise)
-            program.setFloatUniform("uExposure", s.exposure)
-            program.setFloatUniform("uWarmth", s.warmth)
-            program.setFloatUniform("uSaturation", s.saturation)
-            program.setFloatUniform("uContrast", s.contrast)
-            program.setFloatUniform("uDenoise", s.denoise)
-            program.setFloatUniform("uSharpness", s.sharpness)
-            program.setFloatUniform("uVignette", s.vignette)
-            program.setFloatUniform("uOriginal", if (s.original) 1f else 0f)
-            program.setFloatUniform("uSplit", if (s.compare) s.split else -1f)
-            program.bindAttributesAndUniforms()
-            GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
-            GlUtil.checkGlError()
-        } catch (e: GlUtil.GlException) { throw VideoFrameProcessingException(e, presentationTimeUs) }
+            val compression = if (s.jpegEnabled && s.jpegAmount > 0f && !s.original)
+                (jpeg ?: JpegCompression().also { jpeg = it }) else null
+            compression?.begin(width, height)
+            try {
+                program.use()
+                program.setSamplerTexIdUniform("uTex", inputTexId, 0)
+                program.setFloatsUniform("uPixel", floatArrayOf(1f / width, 1f / height))
+                program.setFloatsUniform("uShot", n.shot)
+                program.setFloatsUniform("uRead", n.read)
+                program.setFloatUniform("uTime", (presentationTimeUs % 10_000_000L) / 1_000_000f)
+                program.setFloatUniform("uNoise", s.noise)
+                program.setFloatUniform("uExposure", s.exposure)
+                program.setFloatUniform("uWarmth", s.warmth)
+                program.setFloatUniform("uSaturation", s.saturation)
+                program.setFloatUniform("uContrast", s.contrast)
+                program.setFloatUniform("uDenoise", s.denoise)
+                program.setFloatUniform("uSharpness", s.sharpness)
+                program.setFloatUniform("uVignette", s.vignette)
+                program.setFloatUniform("uOriginal", if (s.original) 1f else 0f)
+                program.setFloatUniform("uSplit", if (s.compare && compression == null) s.split else -1f)
+                program.bindAttributesAndUniforms()
+                GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
+                GlUtil.checkGlError()
+                compression?.finish(inputTexId, s)
+            } finally { compression?.restoreTarget() }
+        } catch (e: Exception) { throw VideoFrameProcessingException(e, presentationTimeUs) }
     }
 
     override fun release() {
         try { super.release() } finally {
-            try { program.delete() }
+            try { try { program.delete() } finally { jpeg?.release() } }
             catch (e: GlUtil.GlException) { throw VideoFrameProcessingException(e) }
         }
     }
@@ -131,3 +138,4 @@ private class SensorProgram(
         """
     }
 }
+
