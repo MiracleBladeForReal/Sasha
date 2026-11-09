@@ -1,4 +1,4 @@
-# Galaxy Sensor Lab 0.3
+# Galaxy Sensor Lab JPEG 0.3
 
 Laboratorio video Android con elaborazione GPU reale, anteprima e salvataggio MP4. Tutto avviene sul telefono, senza caricamenti in rete.
 
@@ -17,11 +17,11 @@ Laboratorio video Android con elaborazione GPU reale, anteprima e salvataggio MP
 ## Installazione dal Samsung
 
 1. Apri [Actions](https://github.com/MiracleBladeForReal/Sasha/actions/workflows/android.yml) e l’ultima build verde.
-2. Scarica **GalaxySensorLab-debug-apk** dalla sezione **Artifacts**.
+2. Scarica **GalaxySensorLab-JPEG-debug-apk** dalla sezione **Artifacts**.
 3. Estrai lo ZIP con **Archivio** e apri `app-debug.apk`.
 4. Consenti l’installazione da quella fonte, se richiesta.
 
-Android 8.0 o successivo. APK di sviluppo: le chiavi debug possono cambiare fra runner. In caso di firma incompatibile occorre disinstallare la versione precedente, perdendo le preferenze locali, e poi installare la nuova. Per pubblicare e aggiornare stabilmente servirà una chiave di produzione.
+Android 8.0 o successivo. Questa variante si chiama **Galaxy Sensor Lab JPEG** e usa un identificativo Android distinto (`com.galaxysensorlab.jpeg`). Può essere installata accanto alle altre versioni di Galaxy Sensor Lab, senza sostituirle e senza cancellarne le impostazioni. Le preferenze e il video selezionato sono indipendenti: importa nuovamente la clip nella variante JPEG. È un APK di sviluppo; per aggiornamenti futuri con firma stabile servirà una chiave di produzione.
 
 ## Uso
 

@@ -71,7 +71,7 @@ private fun LabScreen(model: LabViewModel) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
             Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("GALAXY / SENSOR LAB", style = MaterialTheme.typography.labelMedium,
+                    Text("GALAXY / SENSOR LAB JPEG", style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                     Text("Il tuo video. Un altro carattere.", style = MaterialTheme.typography.titleMedium)
                 }
@@ -214,7 +214,7 @@ private fun LabScreen(model: LabViewModel) {
                                 Text(if (model.saving) "Salvataggio…" else "Elaborazione ${progress?.let { "$it%" } ?: "in corso…"}")
                                 TextButton(onClick = { model.cancelExport() }, enabled = !model.saving) { Text("Annulla esportazione") }
                             } else {
-                                Button(onClick = { exporter.launch("GalaxySensorLab-${System.currentTimeMillis()}.mp4") },
+                                Button(onClick = { exporter.launch("GalaxySensorLab-JPEG-${System.currentTimeMillis()}.mp4") },
                                     enabled = ready, modifier = Modifier.fillMaxWidth()) { Text("Salva video elaborato") }
                             }
                             model.resultUri?.let { uri ->

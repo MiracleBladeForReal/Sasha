@@ -9,7 +9,7 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.galaxysensorlab"
+        applicationId = "com.galaxysensorlab.jpeg"
         minSdk = 26
         targetSdk = 35
         versionCode = 3
