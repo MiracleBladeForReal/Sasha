@@ -53,3 +53,5 @@ Dopo lo sviluppo, quattro passaggi GPU eseguono DCT separabile su blocchi fissi 
 Coefficienti a 16 bit per canale sono impacchettati in texture RGBA8, senza letture CPU dei fotogrammi e senza richiedere framebuffer floating point. I bordi non multipli di 8 vengono estesi replicando l'ultimo pixel. Il confronto originale/elaborato viene applicato alla fine, preservando la metà originale. L'esportazione applica l'effetto all'intero fotogramma prima del ridimensionamento.
 
 L'effetto usa circa 40 MiB di buffer aggiuntivi per una sorgente 1080p e aumenta il lavoro GPU; fluidità, consumi e limiti di risoluzione vanno verificati sul dispositivo. La dimensione dei blocchi segue i pixel della sorgente: ridimensionando in esportazione anche i blocchi si riducono. Una sorgente che supera i limiti delle texture della GPU non può utilizzare questo effetto.
+
+Verifica aggiuntiva degli shader su Linux/Mesa: con Python, NumPy e libEGL installati, esegui `python3 tools/verify_jpeg_shader.py`. La prova esegue gli shader di produzione e confronta i pixel con una DCT di riferimento indipendente, includendo bordi parziali e orientamenti dei buffer.

@@ -121,7 +121,7 @@ class SensorPipelineTest {
     }
 
     @Test fun appOpensVideoAndSavesProcessedResult() {
-        val png = createInput()
+        val png = createDetailedInput()
         val source = File(context.cacheDir, "ui-source.mp4")
         render(png, LabSettings(noise = 0f), source).recycle()
         val destination = File(context.cacheDir, "ui-export.mp4").also { it.delete() }
@@ -148,7 +148,7 @@ class SensorPipelineTest {
             val before = instrumentation.uiAutomation.takeScreenshot()
             scenario.onActivity { ref.get().update(LabSettings(noise = 0f, exposure = 1.5f)) }
             Thread.sleep(700)
-            val screenshot = instrumentation.uiAutomation.takeScreenshot()
+            var screenshot = instrumentation.uiAutomation.takeScreenshot()
             // Sample only the middle of the video area, excluding labels and controls.
             var previewDelta = 0.0
             var samples = 0
@@ -160,6 +160,26 @@ class SensorPipelineTest {
             }
             assertTrue("Paused preview must redraw after changing exposure", previewDelta / samples > 6.0)
             before.recycle()
+            scenario.onActivity {
+                ref.get().update(LabSettings(noise = 0f, exposure = 1.5f,
+                    jpegEnabled = true, jpegAmount = 1f))
+            }
+            Thread.sleep(700)
+            val jpegPreview = instrumentation.uiAutomation.takeScreenshot()
+            var jpegDelta = 0.0
+            var jpegSamples = 0
+            for (y in jpegPreview.height / 5 until jpegPreview.height / 3 step 4) {
+                for (x in jpegPreview.width / 3 until jpegPreview.width * 2 / 3 step 4) {
+                    val p = jpegPreview.getPixel(x, y)
+                    val q = screenshot.getPixel(x, y)
+                    jpegDelta += abs(Color.red(p) - Color.red(q)) +
+                        abs(Color.green(p) - Color.green(q)) + abs(Color.blue(p) - Color.blue(q))
+                    jpegSamples += 3
+                }
+            }
+            assertTrue("Paused preview must redraw after enabling JPEG", jpegDelta / jpegSamples > 2.0)
+            screenshot.recycle()
+            screenshot = jpegPreview
             if (Build.VERSION.SDK_INT >= 29) {
                 val values = ContentValues().apply {
                     put(MediaStore.Images.Media.DISPLAY_NAME, "lab-video.png")
