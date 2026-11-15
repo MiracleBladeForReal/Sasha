@@ -76,7 +76,7 @@ private fun LabScreen(model: LabViewModel) {
                     }
                 } else Button(onClick={ picker.launch(arrayOf("video/*")) }) { Text("Importa video SDR") }
             }
-            LazyColumn(Modifier.weight(1f),contentPadding=PaddingValues(16.dp),verticalArrangement=Arrangement.spacedBy(14.dp)) {
+            LazyColumn(Modifier.weight(1f).testTag("lab-controls"),contentPadding=PaddingValues(16.dp),verticalArrangement=Arrangement.spacedBy(14.dp)) {
                 item {
                     Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {

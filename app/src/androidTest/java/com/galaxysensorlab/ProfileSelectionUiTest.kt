@@ -5,6 +5,8 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.lifecycle.ViewModelProvider
@@ -24,6 +26,7 @@ class ProfileSelectionUiTest {
         compose.runOnIdle {
             ViewModelProvider(compose.activity)[LabViewModel::class.java].update(LabSettings())
         }
+        compose.onNodeWithTag("lab-controls").performScrollToNode(hasTestTag("defects-enabled"))
         compose.onNodeWithTag("defects-enabled").performScrollTo().performClick()
         compose.onNodeWithText("Misti").performScrollTo().performClick()
         var oldSeed=0

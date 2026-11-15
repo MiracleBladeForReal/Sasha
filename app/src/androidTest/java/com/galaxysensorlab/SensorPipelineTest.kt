@@ -238,6 +238,7 @@ class SensorPipelineTest {
         val destination = File(context.cacheDir, "ui-export.mp4").also { it.delete() }
         val ready = CountDownLatch(1)
         val firstFrame = CountDownLatch(1)
+        val playerError = AtomicReference<Throwable?>()
         val ref = AtomicReference<LabViewModel>()
         var retainedSeed = -1
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
@@ -245,6 +246,9 @@ class SensorPipelineTest {
                 val model = ViewModelProvider(activity)[LabViewModel::class.java]
                 ref.set(model)
                 model.player.addListener(object : Player.Listener {
+                    override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                        playerError.set(error); ready.countDown(); firstFrame.countDown()
+                    }
                     override fun onRenderedFirstFrame() { firstFrame.countDown() }
                     override fun onPlaybackStateChanged(playbackState: Int) {
                         if (playbackState == Player.STATE_READY) ready.countDown()
@@ -252,7 +256,11 @@ class SensorPipelineTest {
                 })
                 model.loadVideo(Uri.fromFile(source))
             }
-            assertTrue("The actual player must open the clip", ready.await(20, TimeUnit.SECONDS))
+            val becameReady=ready.await(20, TimeUnit.SECONDS)
+            playerError.get()?.let { throw AssertionError("Preview playback failed",it) }
+            val diagnostic=AtomicReference<String>()
+            scenario.onActivity { diagnostic.set("${ref.get().message}; uri=${ref.get().videoUri}; state=${ref.get().player.playbackState}") }
+            assertTrue("The actual player must open the clip: ${diagnostic.get()}", becameReady)
             assertTrue("Player must render the first frame, not only become ready",firstFrame.await(30,TimeUnit.SECONDS))
             instrumentation.waitForIdleSync()
             scenario.onActivity {
