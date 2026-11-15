@@ -131,7 +131,8 @@ private class SensorProgram(private val calibration: NoiseCalibration,private va
                 }
                 if(left*16.0+right>=uDefectCount) return value;
                 vec2 size=min(vec2(uDefectSize),cellSize);
-                vec2 origin=cell*cellSize+floor(vec2(defectRandom(cell,71.0),defectRandom(cell,137.0))*(cellSize-size+1.0));
+                // Reserve room for the largest size so changing size keeps the anchor.
+                vec2 origin=cell*cellSize+floor(vec2(defectRandom(cell,71.0),defectRandom(cell,137.0))*max(cellSize-5.0,vec2(1.0)));
                 vec2 offset=p-origin;
                 if(offset.x<0.0 || offset.y<0.0 || offset.x>=size.x || offset.y>=size.y) return value;
                 float kind=uDefectMode;

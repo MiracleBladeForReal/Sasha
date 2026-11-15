@@ -195,7 +195,7 @@ private fun LabScreen(model: LabViewModel) {
     if(showLicenses) {
         val license=remember { context.assets.open("THIRD-PARTY-NOTICES.txt").bufferedReader().use { it.readText() }+
             "\n\n"+context.assets.open("LICENSE-GPL-3.0.txt").bufferedReader().use { it.readText() } }
-        AlertDialog(onDismissRequest={ showLicenses=false },title={ Text("Licenze · Edge Sensor") },
+        AlertDialog(onDismissRequest={ showLicenses=false },title={ Text("Licenze · Pixel Bruciati") },
             text={ Text(license,Modifier.heightIn(max=400.dp).verticalScroll(rememberScrollState()),style=MaterialTheme.typography.bodySmall) },
             confirmButton={ TextButton(onClick={ open("https://github.com/MiracleBladeForReal/Sasha/tree/${BuildConfig.SOURCE_COMMIT}") }) { Text("Codice sorgente") } },
             dismissButton={ TextButton(onClick={ showLicenses=false }) { Text("Chiudi") } })

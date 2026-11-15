@@ -128,6 +128,31 @@ class SensorPipelineTest {
         input.delete(); output.delete()
     }
 
+    @Test fun defectModesSizeAndCountChangeActualExportedPixels() {
+        val input=createInput(flat=true,level=100)
+        val settings=LabSettings(iso=100f,defectsEnabled=true,defectCount=20,defectSize=6,defectSeed=819)
+        val white=render(input,settings)
+        val more=render(input,settings.copy(defectCount=80))
+        val small=render(input,settings.copy(defectSize=1))
+        val black=render(input,settings.copy(defectMode=1))
+        val rgb=render(input,settings.copy(defectMode=2))
+        fun count(bitmap: Bitmap,predicate: (Int,Int,Int)->Boolean): Int {
+            var n=0
+            for(y in 0 until bitmap.height) for(x in 0 until bitmap.width) {
+                val p=bitmap.getPixel(x,y)
+                if(predicate(Color.red(p),Color.green(p),Color.blue(p))) n++
+            }
+            return n
+        }
+        val bright: (Int,Int,Int)->Boolean = { r,g,b -> minOf(r,g,b)>200 }
+        assertTrue("White defects must be bright",count(white,bright)>400)
+        assertTrue("Increasing count must add visible defects",count(more,bright)>count(white,bright)*2)
+        assertTrue("Increasing size must enlarge defects",count(white,bright)>count(small,bright)*4)
+        assertTrue("Dead pixels must be dark on a gray source",count(black) { r,g,b -> maxOf(r,g,b)<30 }>400)
+        assertTrue("RGB defects must be colored",count(rgb) { r,g,b -> maxOf(r,g,b)>150 && minOf(r,g,b)<50 && maxOf(r,g,b)-minOf(r,g,b)>120 }>200)
+        listOf(white,more,small,black,rgb).forEach { it.recycle() }; input.delete()
+    }
+
     @Test fun sameRealizationRepeatsAndNewRealizationChangesPixels() {
         val input=createInput(flat=true)
         val seed=NoiseSeeds.next()
