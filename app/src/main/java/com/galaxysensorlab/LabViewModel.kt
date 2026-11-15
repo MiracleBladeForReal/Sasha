@@ -96,7 +96,8 @@ class LabViewModel(application: Application) : AndroidViewModel(application) {
         refreshJob?.cancel()
         refreshJob = viewModelScope.launch {
             delay(100)
-            if (videoUri != null && !player.isPlaying) {
+            // Never flush a decoder that is still preparing/buffering a newly opened clip.
+            if (videoUri != null && player.playbackState == Player.STATE_READY && !player.isPlaying) {
                 // ExoPlayer ignores seeks to the same millisecond. A 1 ms seek flushes the
                 // paused frame through the shader again without visibly advancing the clip.
                 val position = player.currentPosition

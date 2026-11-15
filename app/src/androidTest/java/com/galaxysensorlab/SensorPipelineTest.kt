@@ -269,7 +269,8 @@ class SensorPipelineTest {
             }
             Thread.sleep(700)
             val before = instrumentation.uiAutomation.takeScreenshot()
-            scenario.onActivity { ref.get().update(LabSettings(iso = 3200f,noiseSeed = 6187)) }
+            scenario.onActivity { ref.get().update(LabSettings(iso = 3200f,noiseSeed = 6187,
+                defectsEnabled = true, defectCount = 80, defectSize = 4)) }
             // GPU compilation/rendering can outlive STATE_READY on the software emulator.
             // Poll actual pixels with a bounded deadline instead of assuming a 700 ms redraw.
             val redrawDeadline = System.currentTimeMillis()+15_000
@@ -303,7 +304,8 @@ class SensorPipelineTest {
                 model.newTake()
                 assertNotEquals("New take UI action must change the sequence",seedBefore,model.settings.noiseSeed)
                 retainedSeed = model.settings.noiseSeed
-                model.update(LabSettings(iso = 1600f, noiseSeed = retainedSeed, original = true, compare = true))
+                model.update(LabSettings(iso = 1600f, noiseSeed = retainedSeed, original = true, compare = true,
+                    defectsEnabled = true, defectCount = 80, defectSize = 4))
                 model.export(Uri.fromFile(destination))
             }
             val deadline = System.currentTimeMillis() + 60000
@@ -329,20 +331,32 @@ class SensorPipelineTest {
             } finally { reader.release() }
         }
         val reopened = CountDownLatch(1)
+        val reopenedModel = AtomicReference<LabViewModel>()
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             scenario.onActivity { activity ->
                 val model = ViewModelProvider(activity)[LabViewModel::class.java]
+                reopenedModel.set(model)
                 model.player.addListener(object : Player.Listener {
+                    override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                        playerError.set(error); reopened.countDown()
+                    }
                     override fun onPlaybackStateChanged(state: Int) {
                         if (state == Player.STATE_READY) reopened.countDown()
                     }
                 })
                 if (model.player.playbackState == Player.STATE_READY) reopened.countDown()
             }
-            assertTrue("Saved clip must reopen",reopened.await(20,TimeUnit.SECONDS))
+            val loaded=reopened.await(20,TimeUnit.SECONDS)
+            playerError.get()?.let { throw AssertionError("Reopened preview failed",it) }
+            val diagnostic=AtomicReference<String>()
+            scenario.onActivity { diagnostic.set("${reopenedModel.get().message}; uri=${reopenedModel.get().videoUri}; state=${reopenedModel.get().player.playbackState}") }
+            assertTrue("Saved clip must reopen: ${diagnostic.get()}",loaded)
             scenario.onActivity { activity ->
                 val model = ViewModelProvider(activity)[LabViewModel::class.java]
                 assertEquals("Reopening must preserve the selected take",retainedSeed,model.settings.noiseSeed)
+                assertTrue("Reopening must preserve enabled defects",model.settings.defectsEnabled)
+                assertEquals(80,model.settings.defectCount)
+                assertEquals(4,model.settings.defectSize)
             }
         }
         png.delete(); source.delete(); destination.delete()
