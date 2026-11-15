@@ -89,7 +89,7 @@ class LabViewModel(application: Application) : AndroidViewModel(application) {
 
     fun update(value: LabSettings) {
         val camera = calibration.profile(value.profileId)
-        val safe = value.copy(profileId = camera.id, iso = camera.points.minBy { kotlin.math.abs(it.iso - value.iso) }.iso)
+        val safe = value.copy(profileId = camera.id, iso = camera.points.minBy { kotlin.math.abs(it.iso - value.iso) }.iso).sanitizedDefects()
         settings = safe
         effect.settings = safe
         prefs.edit().putString("settings", safe.toJson()).apply()

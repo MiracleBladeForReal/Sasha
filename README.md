@@ -1,6 +1,18 @@
-# Galaxy Sensor Lab Edge Sensor 0.5
+# Galaxy Sensor Lab Pixel Bruciati 0.6
 
-Edizione essenziale della terza app, richiesta per utilizzare solo i dati del rumore del sensore. Stesso identificativo `com.galaxysensorlab.edgecapture`; nome **Galaxy Sensor Lab Edge Sensor**. Sviluppo sul ramo `edge-capture-v0.4`, versione Android 0.5 (codice 5). `main` 0.2 e `natural-grain-v0.3` restano intatti.
+Nuova app basata sulla 0.5 del ramo `edge-capture-v0.4`, sviluppata esclusivamente su `burnt-pixels-v0.6`. I rami precedenti restano intatti. Identificativo separato `com.galaxysensorlab.burntpixels`, nome **Galaxy Sensor Lab Pixel Bruciati**: si installa accanto alla 0.5 senza sostituirla e conserva preferenze proprie.
+
+## Pixel bruciati
+
+Dopo aver importato un video SDR, attiva **Pixel difettosi** nella scheda **PIXEL BRUCIATI**. L'effetto è disattivato inizialmente. Puoi scegliere:
+
+- Quantità da 1 a 200 punti, dimensione da 1 a 6 pixel della sorgente e intensità da 0 a 100%.
+- Punti bianchi (hot/stuck), neri (dead), colorati RGB o misti.
+- **Cambia disposizione** per generare un'altra mappa, salvata automaticamente con gli altri controlli.
+
+La mappa resta fissa per tutta la clip: il timestamp, l'ISO, la fotocamera e il seme del rumore non spostano i difetti. Dimensione, colore e intensità non ne cambiano la posizione di ancoraggio; aumentando la quantità si conservano i punti già presenti. Anteprima ed esportazione usano lo stesso shader e la stessa mappa, applicata dopo il rumore del sensore. **Originale** esclude entrambi gli effetti, **Prima / dopo** preserva la metà originale. L'MP4 contiene l'intero fotogramma elaborato anche se l'anteprima è in bypass/confronto.
+
+Questi difetti sono una simulazione creativa, non misure dei sensori SIDD/darktable. Il fotogramma viene suddiviso in 16 × 16 celle con un punto candidato per cella; una permutazione deterministica sceglie il numero richiesto. La dimensione viene limitata alla cella per sorgenti molto piccole; sotto 16 pixel su un lato l'effetto è escluso. La compressione H.264 e il ridimensionamento dell'anteprima possono attenuare i singoli punti: per una prima prova usa 4 px, intensità 100%, Bianchi. Non viene ridimensionata la sorgente.
 
 ## Cosa rimane
 
@@ -8,7 +20,7 @@ Importazione di video SDR, selezione del profilo e di un ISO pubblicato, antepri
 
 Rimangono 439 profili: Samsung Galaxy S6 Edge SIDD predefinito più 438 modelli darktable. Il selettore ISO propone esclusivamente i valori presenti nel profilo, senza cursore di intensità. Al cambio fotocamera l’ISO viene riportato al valore pubblicato più vicino.
 
-**Rimossi dal codice e dall’interfaccia**: preset, intensità arbitraria, rumore di lettura aggiunto, rinforzo ombre, protezione alte luci, dimensione/morbidezza della grana, miscela artistica luminanza/crominanza, rinnovo e correlazione temporale regolabili, esposizione, temperatura, saturazione, contrasto, denoise, nitidezza e vignettatura. I vecchi valori salvati vengono scartati dalla migrazione: nessun effetto residuo nascosto. Nessuna conversione HDR automatica; il video HDR dichiarato viene rifiutato con un messaggio per evitare modifiche automatiche di luminosità.
+**Assenti dal modello del rumore e dall’interfaccia**: preset, intensità arbitraria, rumore di lettura aggiunto, rinforzo ombre, protezione alte luci, dimensione/morbidezza della grana, miscela artistica luminanza/crominanza, rinnovo e correlazione temporale regolabili, esposizione, temperatura, saturazione, contrasto, denoise, nitidezza e vignettatura. I vecchi valori salvati vengono scartati dalla migrazione: nessun effetto residuo nascosto. Nessuna conversione HDR automatica; il video HDR dichiarato viene rifiutato con un messaggio per evitare modifiche automatiche di luminosità.
 
 ## Modello del rumore
 
@@ -37,11 +49,11 @@ Il workflow **Verify original S6 Edge video reference** scarica il 1080p30, regi
 
 ## Installazione sul Samsung
 
-1. Apri [Actions di questo ramo](https://github.com/MiracleBladeForReal/Sasha/actions?query=branch%3Aedge-capture-v0.4) e la build Android verde della 0.5.
-2. Scarica l’artefatto **GalaxySensorLab-Edge-Sensor-debug-apk**, estrai lo ZIP con Archivio e apri `app-debug.apk`.
+1. Apri [Actions di questo ramo](https://github.com/MiracleBladeForReal/Sasha/actions?query=branch%3Aburnt-pixels-v0.6) e la build **Build Galaxy Sensor Lab Pixel Bruciati APK** verde della 0.6.
+2. Scarica l’artefatto **GalaxySensorLab-Pixel-Bruciati-debug-apk**, estrai lo ZIP con Archivio e apri `app-debug.apk`.
 3. Autorizza l’installazione da quella fonte se Android lo richiede.
 
-La 0.5 sostituisce solo la terza app Edge Capture. Le altre due restano installate separatamente. APK debug: se Android segnala una firma incompatibile, disinstalla solo Edge Capture e installa Edge Sensor; le preferenze di quella app andranno perse. Per aggiornamenti stabili servirà una chiave di produzione.
+La 0.6 si installa separatamente dalla 0.5 e dalle altre app. APK debug: in caso di firma incompatibile durante un futuro aggiornamento della 0.6, disinstalla solo **Pixel Bruciati**; perderai le sue preferenze. Per aggiornamenti stabili servirà una chiave di produzione.
 
 Android 8 o successivo. Il codec del telefono deve supportare la risoluzione della sorgente; non viene applicato un ridimensionamento nascosto. Bitrate richiesto 16 Mbps fino a 1080p, 48 Mbps oltre: non è una calibrazione della compressione Samsung. Il rumore già contenuto nel video sorgente rimane presente. L’app non identifica automaticamente ISO o fotocamera da un video AI.
 
@@ -56,3 +68,6 @@ Edizione GPL-3.0-or-later, testo completo e attribuzioni nell’APK; AndroidX/Me
 ## Verifica
 
 Compilazione, Android lint e prove su Android 15 con codec/GL reali. Test su coefficienti pubblicati, migrazione delle vecchie impostazioni creative, selezione del profilo/ISO, realizzazioni riproducibili, nero S6 senza floor artificiale, media luminosa in spazio approssimativamente lineare, aumento della varianza con segnale e ISO, confronto, rifiuto HDR. Prova integrata di importazione, modifica in pausa, esportazione a dimensioni originali e ripristino della sequenza alla riapertura. Schermate e report sono artefatti della build. Il test su emulatore non misura fedeltà statistica o prestazioni sul Samsung fisico.
+
+
+Le prove della 0.6 verificano anche persistenza e limiti dei controlli, attivazione dall'interfaccia, punti visibili negli MP4 reali, posizione fissa tra timestamp e ISO/semi del rumore diversi, cambio disposizione, intensità zero, disattivazione, bypass e metà originale pulita.

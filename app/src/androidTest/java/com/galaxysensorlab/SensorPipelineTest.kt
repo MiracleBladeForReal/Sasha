@@ -74,8 +74,58 @@ class SensorPipelineTest {
     @Test fun migrationDropsAllCreativeSettings() {
         val migrated=LabSettings.fromJson("""{"iso":1600,"noiseSeed":632,"noise":2,"readNoise":0.02,"shadowGain":3,"highlightProtect":1,"temporalCoherence":1,"grainSize":12,"grainLuma":1.5,"grainChroma":1.5,"grainSoftness":1,"grainRate":1,"exposure":3,"warmth":1,"contrast":1.5,"saturation":2,"denoise":1,"sharpness":1,"vignette":1}""")
         assertEquals(LabSettings(iso=1600f,noiseSeed=632),migrated)
-        assertEquals(setOf("schema","profileId","iso","noiseSeed"),org.json.JSONObject(migrated.toJson()).keys().asSequence().toSet())
+        assertEquals(setOf("schema","profileId","iso","noiseSeed","defectsEnabled","defectCount","defectSize","defectIntensity","defectMode","defectSeed"),org.json.JSONObject(migrated.toJson()).keys().asSequence().toSet())
         assertEquals(migrated,LabSettings.fromJson(migrated.copy(original=true,compare=true).toJson()))
+    }
+
+    @Test fun defectSettingsRoundTripAndRejectInvalidRanges() {
+        val settings=LabSettings(defectsEnabled=true,defectCount=73,defectSize=4,
+            defectIntensity=0.6f,defectMode=3,defectSeed=72819)
+        assertEquals(settings,LabSettings.fromJson(settings.toJson()))
+        val invalid=LabSettings.fromJson("""{"defectCount":999,"defectSize":0,"defectIntensity":-2,"defectMode":99,"defectSeed":-1}""")
+        assertEquals(200,invalid.defectCount)
+        assertEquals(1,invalid.defectSize)
+        assertEquals(0f,invalid.defectIntensity,0f)
+        assertEquals(3,invalid.defectMode)
+        assertEquals(0,invalid.defectSeed)
+        assertEquals(1f,settings.copy(defectIntensity=Float.NaN).sanitizedDefects().defectIntensity,0f)
+    }
+
+    @Test fun burntPixelsStayFixedAcrossTimeAndNoiseSeedsInActualMp4() {
+        val input=createInput(flat=true,level=0)
+        val output=File(context.cacheDir,"fixed-defects.mp4")
+        val settings=LabSettings(defectsEnabled=true,defectCount=80,defectSize=4,defectSeed=819)
+        val first=render(input,settings,output,sampleTimeUs=100_000)
+        val reader=MediaMetadataRetriever()
+        val later=try {
+            reader.setDataSource(output.absolutePath)
+            requireNotNull(reader.getFrameAtTime(800_000,MediaMetadataRetriever.OPTION_CLOSEST))
+        } finally { reader.release() }
+        val newNoise=render(input,settings.copy(iso=3200f,noiseSeed=9876))
+        val newMap=render(input,settings.copy(defectSeed=19431))
+        val bypass=render(input,settings.copy(original=true))
+        val disabled=render(input,settings.copy(defectsEnabled=false))
+        val zero=render(input,settings.copy(defectIntensity=0f))
+        val split=render(input,settings.copy(compare=true))
+        val black=render(input,settings.copy(defectMode=1))
+        fun bright(bitmap: Bitmap,left: Int=0,right: Int=bitmap.width): Set<Int> {
+            val pixels=mutableSetOf<Int>()
+            for(y in 0 until bitmap.height) for(x in left until right) {
+                if(Color.red(bitmap.getPixel(x,y))>180) pixels.add(y*bitmap.width+x)
+            }
+            return pixels
+        }
+        val points=bright(first)
+        assertTrue("White defects must survive H.264 export",points.size>500)
+        fun overlap(other: Bitmap): Double = points.intersect(bright(other)).size.toDouble()/points.size
+        assertTrue("Map must stay fixed across video timestamps",overlap(later)>0.95)
+        assertTrue("Noise seed and ISO must not move defective pixels",overlap(newNoise)>0.95)
+        assertTrue("Changing disposition must move defects",overlap(newMap)<0.25)
+        for(bitmap in listOf(bypass,disabled,zero,black)) assertTrue("Bypass, zero intensity, disabled, and black-on-black must stay black",bright(bitmap).isEmpty())
+        assertTrue("Original comparison half must be clean",bright(split,0,split.width/2).isEmpty())
+        assertTrue("Processed comparison half must retain defects",bright(split,split.width/2,split.width).size>100)
+        listOf(first,later,newNoise,newMap,bypass,disabled,zero,split,black).forEach { it.recycle() }
+        input.delete(); output.delete()
     }
 
     @Test fun sameRealizationRepeatsAndNewRealizationChangesPixels() {
@@ -156,7 +206,7 @@ class SensorPipelineTest {
     }
 
     @Test fun appOpensVideoAndSavesProcessedResult() {
-        assertEquals("Third app must install alongside versions 0.2 and 0.3", "com.galaxysensorlab.edgecapture", context.packageName)
+        assertEquals("Pixel Bruciati must install alongside version 0.5", "com.galaxysensorlab.burntpixels", context.packageName)
         val png = createInput()
         val source = File(context.cacheDir, "ui-source.mp4")
         render(png, LabSettings(original = true), source).recycle()

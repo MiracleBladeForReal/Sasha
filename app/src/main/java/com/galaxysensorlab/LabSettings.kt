@@ -5,17 +5,34 @@ import org.json.JSONObject
 import kotlin.math.ln
 import kotlin.math.sqrt
 
-/** Only measured profile selection, target ISO, realization, and comparison state. */
+/** Measured noise plus an independent, optional creative defect map. */
 data class LabSettings(
     val profileId: String = "sidd:s6",
     val iso: Float = 800f,
     val noiseSeed: Int = 0,
     val compare: Boolean = false,
     val original: Boolean = false,
-    val split: Float = 0.5f
+    val split: Float = 0.5f,
+    val defectsEnabled: Boolean = false,
+    val defectCount: Int = 20,
+    val defectSize: Int = 1,
+    val defectIntensity: Float = 1f,
+    val defectMode: Int = 0, // White, black, RGB, mixed.
+    val defectSeed: Int = 947
 ) {
+    fun sanitizedDefects(): LabSettings = copy(
+        defectCount = defectCount.coerceIn(1, 200),
+        defectSize = defectSize.coerceIn(1, 6),
+        defectIntensity = defectIntensity.takeIf { it.isFinite() }?.coerceIn(0f, 1f) ?: 1f,
+        defectMode = defectMode.coerceIn(0, 3),
+        defectSeed = defectSeed.coerceIn(0, 1_048_575))
+
     fun toJson(): String = JSONObject().apply {
-        put("schema", 2); put("profileId", profileId); put("iso", iso); put("noiseSeed", noiseSeed)
+        put("schema", 3); put("profileId", profileId); put("iso", iso); put("noiseSeed", noiseSeed)
+        val d = sanitizedDefects()
+        put("defectsEnabled", d.defectsEnabled); put("defectCount", d.defectCount)
+        put("defectSize", d.defectSize); put("defectIntensity", d.defectIntensity)
+        put("defectMode", d.defectMode); put("defectSeed", d.defectSeed)
     }.toString()
     companion object {
         fun fromJson(text: String): LabSettings {
@@ -23,7 +40,13 @@ data class LabSettings(
             // Old creative settings are deliberately discarded, never applied invisibly.
             return LabSettings(profileId = j.optString("profileId", "sidd:s6"),
                 iso = j.optDouble("iso", 800.0).toFloat().takeIf { it.isFinite() }?.coerceIn(1f,10_000_000f) ?: 800f,
-                noiseSeed = j.optInt("noiseSeed",0).coerceIn(0,1_048_575))
+                noiseSeed = j.optInt("noiseSeed",0).coerceIn(0,1_048_575),
+                defectsEnabled = j.optBoolean("defectsEnabled", false),
+                defectCount = j.optInt("defectCount", 20),
+                defectSize = j.optInt("defectSize", 1),
+                defectIntensity = j.optDouble("defectIntensity", 1.0).toFloat(),
+                defectMode = j.optInt("defectMode", 0),
+                defectSeed = j.optInt("defectSeed", 947)).sanitizedDefects()
         }
     }
 }

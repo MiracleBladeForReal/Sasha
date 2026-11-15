@@ -20,6 +20,31 @@ import org.junit.runner.RunWith
 class ProfileSelectionUiTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
 
+    @Test fun userCanEnableChangeAndDisableDefects() {
+        compose.runOnIdle {
+            ViewModelProvider(compose.activity)[LabViewModel::class.java].update(LabSettings())
+        }
+        compose.onNodeWithTag("defects-enabled").performScrollTo().performClick()
+        compose.onNodeWithText("Misti").performScrollTo().performClick()
+        var oldSeed=0
+        compose.runOnIdle {
+            val settings=ViewModelProvider(compose.activity)[LabViewModel::class.java].settings
+            assertTrue(settings.defectsEnabled)
+            assertEquals(3,settings.defectMode)
+            oldSeed=settings.defectSeed
+        }
+        compose.onNodeWithText("Cambia disposizione").performScrollTo().performClick()
+        compose.runOnIdle {
+            assertNotEquals(oldSeed,ViewModelProvider(compose.activity)[LabViewModel::class.java].settings.defectSeed)
+        }
+        compose.onNodeWithTag("defects-enabled").performScrollTo().performClick()
+        compose.runOnIdle {
+            val model=ViewModelProvider(compose.activity)[LabViewModel::class.java]
+            assertFalse(model.settings.defectsEnabled)
+            model.update(LabSettings())
+        }
+    }
+
     @Test fun userCanSearchSelectAndRestoreS6Edge() {
         compose.onNodeWithText("Scegli fotocamera").performScrollTo().performClick()
         compose.onNodeWithTag("camera-search").performTextReplacement("OnePlus Nord 3")

@@ -19,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -56,11 +57,11 @@ private fun LabScreen(model: LabViewModel) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
             Row(Modifier.fillMaxWidth().padding(16.dp),verticalAlignment=Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("GALAXY / EDGE SENSOR",color=MaterialTheme.colorScheme.primary,
+                    Text("GALAXY / PIXEL BRUCIATI",color=MaterialTheme.colorScheme.primary,
                         style=MaterialTheme.typography.labelMedium,fontWeight=FontWeight.Bold)
                     Text("Modello di rumore del sensore",style=MaterialTheme.typography.titleMedium)
                 }
-                Text("v0.5",style=MaterialTheme.typography.labelSmall)
+                Text("v0.6",style=MaterialTheme.typography.labelSmall)
             }
             Box(Modifier.fillMaxWidth().aspectRatio(16f/9f).background(Color.Black),contentAlignment=Alignment.Center) {
                 if(model.videoUri!=null) {
@@ -114,6 +115,38 @@ private fun LabScreen(model: LabViewModel) {
                 item {
                     Card {
                         Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
+                            Text("PIXEL BRUCIATI",color=MaterialTheme.colorScheme.secondary,style=MaterialTheme.typography.labelSmall)
+                            Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
+                                Text("Attiva pixel difettosi",Modifier.weight(1f))
+                                Switch(checked=s.defectsEnabled,onCheckedChange={ model.update(s.copy(defectsEnabled=it)) },
+                                    enabled=!model.busy,modifier=Modifier.testTag("defects-enabled"))
+                            }
+                            Text("Punti fissi nel video, anche nell’MP4. Simulazione creativa indipendente dal profilo sensore.",style=MaterialTheme.typography.bodySmall)
+                            if(s.defectsEnabled) {
+                                val editable=!model.busy
+                                Text("Quantità: ${s.defectCount}")
+                                Slider(value=s.defectCount.toFloat(),onValueChange={ model.update(s.copy(defectCount=kotlin.math.round(it).toInt())) },
+                                    valueRange=1f..200f,steps=198,enabled=editable)
+                                Text("Dimensione: ${s.defectSize} px della sorgente")
+                                Slider(value=s.defectSize.toFloat(),onValueChange={ model.update(s.copy(defectSize=kotlin.math.round(it).toInt())) },
+                                    valueRange=1f..6f,steps=4,enabled=editable)
+                                Text("Intensità: ${(s.defectIntensity*100).toInt()}%")
+                                Slider(value=s.defectIntensity,onValueChange={ model.update(s.copy(defectIntensity=it)) },
+                                    valueRange=0f..1f,enabled=editable)
+                                listOf("Bianchi", "Neri", "Colorati RGB", "Misti").forEachIndexed { index,label ->
+                                    FilterChip(selected=s.defectMode==index,onClick={ model.update(s.copy(defectMode=index)) },
+                                        enabled=editable,label={ Text(label) })
+                                }
+                                OutlinedButton(onClick={ model.update(s.copy(defectSeed=NoiseSeeds.next(s.defectSeed))) },
+                                    enabled=editable) { Text("Cambia disposizione") }
+                                Text("I punti restano nella stessa posizione cambiando ISO o fotocamera. A 1 px possono attenuarsi con la compressione video.",style=MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                }
+                item {
+                    Card {
+                        Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
                             Text("ESPORTAZIONE MP4",color=MaterialTheme.colorScheme.secondary,style=MaterialTheme.typography.labelSmall)
                             Text("H.264 / AAC · risoluzione e frequenza della sorgente",style=MaterialTheme.typography.bodySmall)
                             Text("Tieni l’app aperta durante il salvataggio.",style=MaterialTheme.typography.bodySmall)
@@ -123,7 +156,7 @@ private fun LabScreen(model: LabViewModel) {
                                 else LinearProgressIndicator(progress={ progress/100f },modifier=Modifier.fillMaxWidth())
                                 Text(if(model.saving) "Salvataggio…" else "Elaborazione ${progress?.let { "$it%" } ?: "in corso…"}")
                                 TextButton(onClick=model::cancelExport,enabled=!model.saving) { Text("Annulla") }
-                            } else Button(onClick={ exporter.launch("GalaxySensorLab-Sensor-${System.currentTimeMillis()}.mp4") },
+                            } else Button(onClick={ exporter.launch("GalaxySensorLab-PixelBruciati-${System.currentTimeMillis()}.mp4") },
                                 enabled=ready,modifier=Modifier.fillMaxWidth()) { Text("Salva video elaborato") }
                             model.resultUri?.let { uri -> OutlinedButton(onClick={
                                 runCatching { context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri,"video/mp4")
@@ -152,7 +185,7 @@ private fun LabScreen(model: LabViewModel) {
             Text(camera.attribution)
             Text("ISO ${s.iso.toInt()} — coefficienti originali RGB")
             Text("a: ${point.shot.joinToString()}\nb: ${point.read.joinToString()}")
-            Text("Non vengono aggiunti rumore di lettura, curve di luce o correlazioni non misurati. I valori b negativi restano nel calcolo della varianza totale, limitata a zero.")
+            Text("Il modello del rumore non aggiunge curve di luce o componenti non misurate. I valori b negativi restano nel calcolo della varianza totale, limitata a zero. I pixel bruciati sono una simulazione creativa separata e facoltativa, non dati misurati del sensore.")
             Text("Campioni S6 Edge pubblicati come file originali da GSMArena. Video compresso del telefono, non dati RAW; ISO e trattamento ISP non sono documentati nel campione.")
             TextButton(onClick={ open("https://fdn.gsmarena.com/vv/reviewsimg/samsung-galaxy-s6-edge/camera/gsmarena_v002.mp4") }) { Text("Originale S6 Edge · 1080p30") }
             TextButton(onClick={ open("https://fdn.gsmarena.com/vv/reviewsimg/samsung-galaxy-s6-edge/camera/gsmarena_v001.mp4") }) { Text("Originale S6 Edge · 2160p30") }

@@ -11,7 +11,7 @@ import androidx.media3.effect.BaseGlShaderProgram
 import androidx.media3.effect.GlEffect
 import androidx.media3.effect.GlShaderProgram
 
-/** Signal-dependent profile noise only. No creative processing or added read floor. */
+/** Published profile noise, with an optional independent map of stuck/dead pixels. */
 @UnstableApi
 class SensorEffect(private val calibration: NoiseCalibration, initial: LabSettings) : GlEffect {
     @Volatile var settings = initial
@@ -35,7 +35,7 @@ private class SensorProgram(private val calibration: NoiseCalibration,private va
     }
     override fun drawFrame(inputTexId: Int,presentationTimeUs: Long) {
         try {
-            val s=effect.settings
+            val s=effect.settings.sanitizedDefects()
             val n=calibration.at(s.iso,s.profileId)
             val timeMs=presentationTimeUs/1000L
             program.use()
@@ -47,6 +47,11 @@ private class SensorProgram(private val calibration: NoiseCalibration,private va
             program.setFloatsUniform("uTimeKey",floatArrayOf((timeMs%65536L).toFloat(),((timeMs/65536L)%65536L).toFloat()))
             program.setFloatUniform("uOriginal",if(s.original) 1f else 0f)
             program.setFloatUniform("uSplit",if(s.compare) s.split else -1f)
+            program.setFloatUniform("uDefectCount",if(s.defectsEnabled) s.defectCount.toFloat() else 0f)
+            program.setFloatUniform("uDefectSize",s.defectSize.toFloat())
+            program.setFloatUniform("uDefectIntensity",s.defectIntensity)
+            program.setFloatUniform("uDefectMode",s.defectMode.toFloat())
+            program.setFloatsUniform("uDefectSeed",floatArrayOf((s.defectSeed%1024).toFloat(),(s.defectSeed/1024).toFloat()))
             program.bindAttributesAndUniforms()
             GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP,0,4)
             GlUtil.checkGlError()
@@ -69,6 +74,8 @@ private class SensorProgram(private val calibration: NoiseCalibration,private va
             uniform vec2 uSize,uSeed,uTimeKey;
             uniform vec3 uShot,uRead;
             uniform float uOriginal,uSplit;
+            uniform float uDefectCount,uDefectSize,uDefectIntensity,uDefectMode;
+            uniform vec2 uDefectSeed;
             varying vec2 vUv;
             float random(vec2 p,float channel) {
                 vec2 key=p+uSeed*vec2(17.17,31.31)+uTimeKey*vec2(0.173,0.317);
@@ -103,6 +110,40 @@ private class SensorProgram(private val calibration: NoiseCalibration,private va
                 if(b<=0.0) return sqrt(variance)*shot;
                 return sqrt(shotVariance)*shot+sqrt(b)*gaussian(p,channel+409.0);
             }
+            // No timestamp or noise seed: this map stays fixed across frames and takes.
+            float defectRandom(vec2 p,float salt) {
+                vec3 h=fract(vec3(p+uDefectSeed*vec2(17.17,31.31),salt)*0.1031);
+                h+=dot(h,h.yzx+33.33);
+                return fract((h.x+h.y)*h.z);
+            }
+            vec3 defectivePixel(vec2 p,vec3 value) {
+                if(uDefectCount<0.5 || uDefectIntensity<=0.0) return value;
+                // One possible defect per cell. A Feistel permutation gives each of the
+                // 256 cells a unique rank, so increasing count retains existing points.
+                vec2 cellSize=floor(uSize/16.0);
+                if(min(cellSize.x,cellSize.y)<1.0) return value;
+                vec2 cell=min(floor(p/cellSize),vec2(15.0));
+                float left=cell.x;
+                float right=cell.y;
+                for(int i=0;i<4;i++) {
+                    float next=mod(left+floor(defectRandom(vec2(right,float(i)),53.0)*16.0),16.0);
+                    left=right; right=next;
+                }
+                if(left*16.0+right>=uDefectCount) return value;
+                vec2 size=min(vec2(uDefectSize),cellSize);
+                vec2 origin=cell*cellSize+floor(vec2(defectRandom(cell,71.0),defectRandom(cell,137.0))*(cellSize-size+1.0));
+                vec2 offset=p-origin;
+                if(offset.x<0.0 || offset.y<0.0 || offset.x>=size.x || offset.y>=size.y) return value;
+                float kind=uDefectMode;
+                if(kind>2.5) kind=floor(defectRandom(cell,211.0)*3.0);
+                vec3 stuck=vec3(1.0);
+                if(kind>0.5 && kind<1.5) stuck=vec3(0.0);
+                if(kind>1.5) {
+                    float channel=floor(defectRandom(cell,307.0)*3.0);
+                    stuck=channel<0.5 ? vec3(1.0,0.0,0.0) : (channel<1.5 ? vec3(0.0,1.0,0.0) : vec3(0.0,0.0,1.0));
+                }
+                return mix(value,stuck,uDefectIntensity);
+            }
             void main() {
                 vec4 source=texture2D(uTex,vUv);
                 if(uOriginal>0.5 || (uSplit>=0.0 && vUv.x<uSplit)) { gl_FragColor=source; return; }
@@ -111,8 +152,8 @@ private class SensorProgram(private val calibration: NoiseCalibration,private va
                 vec3 noise=vec3(residual(p,x.r,uShot.r,uRead.r,71.0),
                                 residual(p,x.g,uShot.g,uRead.g,137.0),
                                 residual(p,x.b,uShot.b,uRead.b,211.0));
-                // Output clipping is the only nonlinearity; exposure/color remain untouched.
-                gl_FragColor=vec4(clamp(x+noise,0.0,1.0),source.a);
+                vec3 processed=clamp(x+noise,0.0,1.0);
+                gl_FragColor=vec4(defectivePixel(p,processed),source.a);
             }
         """
     }
