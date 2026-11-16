@@ -8,12 +8,16 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.*
 import org.junit.Test
+import org.junit.Rule
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import org.junit.runner.RunWith
 import java.io.File
 
 @UnstableApi
 @RunWith(AndroidJUnit4::class)
 class ImageMedianTest {
+    @get:Rule val compose=androidx.compose.ui.test.junit4.createEmptyComposeRule()
     private val context=InstrumentationRegistry.getInstrumentation().targetContext
     private val calibration=NoiseCalibration(context)
     private val settings=LabSettings(profileId="darktable:Canon:EOS R6",iso=100f,noiseSeed=123)
@@ -54,6 +58,7 @@ class ImageMedianTest {
         val target=File(context.cacheDir,"app-image-export.png").also { it.delete() }
         val ref=java.util.concurrent.atomic.AtomicReference<ImageLabViewModel>()
         androidx.test.core.app.ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            compose.onNodeWithText("Immagini").performClick()
             scenario.onActivity { activity ->
                 val vm=androidx.lifecycle.ViewModelProvider(activity)[ImageLabViewModel::class.java]
                 ref.set(vm); vm.load(Uri.fromFile(file),calibration,settings)
