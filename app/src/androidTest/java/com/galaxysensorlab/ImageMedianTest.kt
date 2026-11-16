@@ -93,8 +93,16 @@ class ImageMedianTest {
             val decoded=ImagePipeline.decode(context,Uri.fromFile(file))
             val result=ImagePipeline.render(decoded,calibration,settings.copy(original=true))
             assertEquals(48,result.width); assertEquals(32,result.height)
-            assertTrue("Top must stay red",Color.red(result.getPixel(20,4))>180)
-            assertTrue("Bottom must stay blue",Color.blue(result.getPixel(20,26))>180)
+            // JPEG has no alpha: Android's encoder may flatten this half-transparent
+            // fixture. Compare against the decoded input, not its pre-encoding color.
+            val top=result.getPixel(20,4); val bottom=result.getPixel(20,26)
+            assertTrue("Top must stay red: $format pixel=$top",Color.red(top)>Color.blue(top)+50)
+            assertTrue("Bottom must stay blue: $format pixel=$bottom",Color.blue(bottom)>Color.red(bottom)+50)
+            for(y in listOf(4,26)) {
+                val expected=decoded.getPixel(20,y); val actual=result.getPixel(20,y)
+                for(channel in listOf(16,8,0)) assertTrue("Bypass color mismatch: $format expected=$expected actual=$actual",
+                    kotlin.math.abs(((expected shr channel) and 255)-((actual shr channel) and 255))<=2)
+            }
             if(format==Bitmap.CompressFormat.PNG) assertEquals(128,Color.alpha(result.getPixel(20,4)))
             val out=File.createTempFile("export", ".png",context.cacheDir)
             out.outputStream().use { assertTrue(result.compress(Bitmap.CompressFormat.PNG,100,it)) }
