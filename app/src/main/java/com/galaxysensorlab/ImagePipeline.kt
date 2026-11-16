@@ -86,7 +86,7 @@ object ImagePipeline {
                 copyPixelsFromBuffer(pixels)
             }
         } finally {
-            program?.delete()
+            runCatching { program?.delete() }
             GLES20.glDeleteTextures(1,texture,0)
             EGL14.eglMakeCurrent(display,EGL14.EGL_NO_SURFACE,EGL14.EGL_NO_SURFACE,EGL14.EGL_NO_CONTEXT)
             if(surface!=EGL14.EGL_NO_SURFACE) EGL14.eglDestroySurface(display,surface)

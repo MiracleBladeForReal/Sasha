@@ -3,6 +3,8 @@ package com.galaxysensorlab
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
@@ -21,6 +23,20 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class ProfileSelectionUiTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
+
+    @Test fun userCanChooseImagesAndSetMedian() {
+        compose.onNodeWithText("Immagini").performClick()
+        compose.onNodeWithText("Importa immagine").assertIsDisplayed()
+        compose.onNodeWithTag("lab-controls").performScrollToNode(hasTestTag("median-radius"))
+        compose.onNodeWithTag("median-radius").performSemanticsAction(SemanticsActions.SetProgress) { it(2f) }
+        compose.runOnIdle {
+            val model=ViewModelProvider(compose.activity)[LabViewModel::class.java]
+            assertEquals(2,model.settings.medianRadius)
+            model.update(LabSettings())
+        }
+        compose.onNodeWithText("Video").performClick()
+        compose.onNodeWithText("Importa video SDR").assertIsDisplayed()
+    }
 
     @Test fun userCanEnableChangeAndDisableDefects() {
         compose.runOnIdle {

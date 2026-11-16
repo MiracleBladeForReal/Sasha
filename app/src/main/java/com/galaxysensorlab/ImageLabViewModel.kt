@@ -41,6 +41,8 @@ class ImageLabViewModel(app: Application): AndroidViewModel(app) {
         }
     }
 
+    fun stopPreview() { renderJob?.cancel(); rendering=false }
+
     fun render(calibration: NoiseCalibration, settings: LabSettings) {
         val input=source ?: return
         renderJob?.cancel()

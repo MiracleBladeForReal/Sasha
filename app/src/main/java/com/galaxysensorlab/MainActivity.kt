@@ -53,7 +53,9 @@ private fun LabScreen(model: LabViewModel, images: ImageLabViewModel) {
     var imageMode by rememberSaveable { mutableStateOf(false) }
     val busy=model.busy || images.working
     val ready=(if(imageMode) images.source!=null else model.videoUri!=null) && !busy
-    LaunchedEffect(s,images.source) { images.render(model.calibration,s) }
+    LaunchedEffect(s,images.source,imageMode) {
+        if(imageMode) images.render(model.calibration,s) else images.stopPreview()
+    }
     val imagePicker=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let { uri -> images.load(uri,model.calibration,model.settings) } }
     val imageExporter=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("image/png")) { it?.let { uri -> images.save(uri,model.calibration,model.settings) } }
     val picker=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let { uri -> model.loadVideo(uri) } }
@@ -100,6 +102,7 @@ private fun LabScreen(model: LabViewModel, images: ImageLabViewModel) {
                     Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text(if(imageMode) "Immagine" else model.videoName,maxLines=1)
+                            if(imageMode) images.message?.let { Text(it,style=MaterialTheme.typography.bodySmall) }
                             Text(if(imageMode) images.source?.let { "${it.width} × ${it.height} · PNG in uscita" } ?: "JPG / JPEG · PNG · WebP" else model.videoInfo.ifEmpty { "Elaborazione sul telefono" },style=MaterialTheme.typography.labelSmall)
                         }
                         TextButton(onClick={ if(imageMode) imagePicker.launch(arrayOf("image/*")) else picker.launch(arrayOf("video/*")) },enabled=!busy) { Text("Cambia") }
