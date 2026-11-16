@@ -143,7 +143,7 @@ private fun LabScreen(model: LabViewModel, images: ImageLabViewModel) {
                     }
                 }
                 completeControls(s,!busy,model::update,model::newTake)
-                item {
+                item(key="median") {
                     Card {
                         Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                             Text("MEDIAN",color=MaterialTheme.colorScheme.secondary)
@@ -154,7 +154,7 @@ private fun LabScreen(model: LabViewModel, images: ImageLabViewModel) {
                         }
                     }
                 }
-                item {
+                item(key="defects") {
                     Card {
                         Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
                             Text("PIXEL BRUCIATI",color=MaterialTheme.colorScheme.secondary,style=MaterialTheme.typography.labelSmall)

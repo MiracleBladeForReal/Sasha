@@ -15,7 +15,7 @@ private fun Control(label: String,value: Float,range: ClosedFloatingPointRange<F
 }
 
 internal fun LazyListScope.completeControls(s: LabSettings,enabled: Boolean,update: (LabSettings)->Unit,newTake: ()->Unit) {
-    item {
+    item(key="presets") {
         Card { Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
             Text("PRESET E RIPRISTINO")
             Row(horizontalArrangement=Arrangement.spacedBy(4.dp)) {
@@ -68,7 +68,7 @@ internal fun LazyListScope.completeControls(s: LabSettings,enabled: Boolean,upda
             Control("Vignettatura",s.vignette,0f..1f,enabled) { update(s.copy(vignette=it)) }
         } }
     }
-    item {
+    item(key="jpeg") {
         Card { Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
             Text("COMPRESSIONE JPEG")
             Switch(checked=s.jpegEnabled,onCheckedChange={ update(s.copy(jpegEnabled=it)) },enabled=enabled,modifier=Modifier.testTag("jpeg-enabled"))

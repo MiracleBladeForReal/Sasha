@@ -18,6 +18,9 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
+import org.junit.Before
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.performScrollToKey
 import org.junit.runner.RunWith
 
 @UnstableApi
@@ -25,12 +28,19 @@ import org.junit.runner.RunWith
 class ProfileSelectionUiTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
 
+    @Before fun awaitMainScreen() {
+        compose.waitUntil(timeoutMillis=10_000) {
+            compose.onAllNodesWithTag("lab-controls").fetchSemanticsNodes().size==1
+        }
+        compose.waitForIdle()
+    }
+
     @Test fun userCanEnableJpegAndResetWithPreset() {
         compose.runOnIdle { ViewModelProvider(compose.activity)[LabViewModel::class.java].update(LabSettings()) }
-        compose.onNodeWithTag("lab-controls").performScrollToNode(hasTestTag("jpeg-enabled"))
+        compose.onNodeWithTag("lab-controls").performScrollToKey("jpeg")
         compose.onNodeWithTag("jpeg-enabled").performScrollTo().performClick()
         compose.runOnIdle { assertTrue(ViewModelProvider(compose.activity)[LabViewModel::class.java].settings.jpegEnabled) }
-        compose.onNodeWithTag("lab-controls").performScrollToNode(hasText("Pulito"))
+        compose.onNodeWithTag("lab-controls").performScrollToKey("presets")
         compose.onNodeWithText("Pulito").performScrollTo().performClick()
         compose.runOnIdle {
             val model=ViewModelProvider(compose.activity)[LabViewModel::class.java]
@@ -42,7 +52,7 @@ class ProfileSelectionUiTest {
     @Test fun userCanChooseImagesAndSetMedian() {
         compose.onNodeWithText("Immagini").performClick()
         compose.onNodeWithText("Importa immagine").assertIsDisplayed()
-        compose.onNodeWithTag("lab-controls").performScrollToNode(hasTestTag("median-radius"))
+        compose.onNodeWithTag("lab-controls").performScrollToKey("median")
         compose.onNodeWithTag("median-radius").performSemanticsAction(SemanticsActions.SetProgress) { it(2f) }
         compose.runOnIdle {
             val model=ViewModelProvider(compose.activity)[LabViewModel::class.java]
@@ -57,7 +67,7 @@ class ProfileSelectionUiTest {
         compose.runOnIdle {
             ViewModelProvider(compose.activity)[LabViewModel::class.java].update(LabSettings())
         }
-        compose.onNodeWithTag("lab-controls").performScrollToNode(hasTestTag("defects-enabled"))
+        compose.onNodeWithTag("lab-controls").performScrollToKey("defects")
         compose.onNodeWithTag("defects-enabled").performScrollTo().performClick()
         compose.onNodeWithText("Misti").performScrollTo().performClick()
         var oldSeed=0
