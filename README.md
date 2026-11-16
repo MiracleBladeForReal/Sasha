@@ -1,6 +1,16 @@
-# Galaxy Sensor Lab Pixel Bruciati 0.6
+# Galaxy Sensor Lab Median Images 0.7
 
-Nuova app basata sulla 0.5 del ramo `edge-capture-v0.4`, sviluppata esclusivamente su `burnt-pixels-v0.6`. I rami precedenti restano intatti. Identificativo separato `com.galaxysensorlab.burntpixels`, nome **Galaxy Sensor Lab Pixel Bruciati**: si installa accanto alla 0.5 senza sostituirla e conserva preferenze proprie.
+Nuovo ramo `median-images-v0.7`, basato su Burnt Pixel 0.6. App separata `com.galaxysensorlab.medianimages`: si installa accanto alla 0.6. Nessun ramo precedente viene modificato.
+
+## Median e immagini
+
+Il controllo **Median** seleziona spento (0), raggio 1 px (3 × 3) o raggio 2 px (5 × 5). È la mediana per canale RGB dell'intero vicinato, con replica del bordo; non è una media né una sfocatura gaussiana. Viene applicata all'originale prima di rumore e pixel bruciati, mantenendo questi ultimi visibili. Il raggio 2 richiede più lavoro alla GPU, soprattutto sui video ad alta risoluzione.
+
+Scegli **Immagini** per aprire JPG/JPEG, PNG, WebP e altri formati statici decodificabili dal dispositivo Android. Orientamento EXIF rispettato, colore convertito in sRGB; per formati animati viene letto un solo fotogramma. Limite 24 megapixel e dimensioni ammesse dalla GPU: gli originali troppo grandi vengono segnalati, senza ridimensionamenti nascosti. Non è un lettore RAW/DNG.
+
+Foto e video condividono shader, Median, profilo/ISO e pixel difettosi. Le foto usano una realizzazione fissa del rumore (timestamp zero), così anteprima e salvataggio sono riproducibili. **Originale** e **Prima / dopo** sono solo controlli di anteprima; l'esportazione PNG contiene l'intera immagine elaborata, alla risoluzione originale e con trasparenza. Il file sorgente non viene sovrascritto. Le impostazioni degli effetti restano salvate; l'immagine selezionata va reimportata dopo la chiusura dell'app.
+
+Per installare apri [la build verde di questo ramo](https://github.com/MiracleBladeForReal/Sasha/actions?query=branch%3Amedian-images-v0.7), scarica **GalaxySensorLab-Median-Images-debug-apk**, estrai lo ZIP e apri `app-debug.apk`.
 
 ## Pixel bruciati
 
@@ -46,14 +56,6 @@ Collegamenti verificati il 3 novembre 2026 e accessibili nel dialogo dati dell�
 Il workflow **Verify original S6 Edge video reference** scarica il 1080p30, registra SHA-256 e metadati del contenitore, verifica la decodifica e riporta statistiche dei primi 15 fotogrammi alla risoluzione nativa nell’artefatto JSON. Il report segnala eventuali errori del sito. Non ridistribuisce il filmato. Le differenze fra fotogrammi includono movimento e compressione e **non vengono spacciate per una misura del rumore del sensore**. Nessun coefficiente viene stimato o sostituito automaticamente da quella scena.
 
 **Limite concreto:** questo è un modello basato su dati di rumore RAW, applicato all’RGB video. Non ricostruisce Bayer/demosaicizzazione, risposta ottica, denoise e sharpening video proprietari, tone mapping o ISP Samsung. I campioni trovati permettono un riferimento video, non una calibrazione del sensore a ISO noto. La replica completa del telefono non è dimostrata e l’app non la dichiara.
-
-## Installazione sul Samsung
-
-1. Apri [Actions di questo ramo](https://github.com/MiracleBladeForReal/Sasha/actions?query=branch%3Aburnt-pixels-v0.6) e la build **Build Galaxy Sensor Lab Pixel Bruciati APK** verde della 0.6.
-2. Scarica l’artefatto **GalaxySensorLab-Pixel-Bruciati-debug-apk**, estrai lo ZIP con Archivio e apri `app-debug.apk`.
-3. Autorizza l’installazione da quella fonte se Android lo richiede.
-
-La 0.6 si installa separatamente dalla 0.5 e dalle altre app. APK debug: in caso di firma incompatibile durante un futuro aggiornamento della 0.6, disinstalla solo **Pixel Bruciati**; perderai le sue preferenze. Per aggiornamenti stabili servirà una chiave di produzione.
 
 Android 8 o successivo. Il codec del telefono deve supportare la risoluzione della sorgente; non viene applicato un ridimensionamento nascosto. Bitrate richiesto 16 Mbps fino a 1080p, 48 Mbps oltre: non è una calibrazione della compressione Samsung. Il rumore già contenuto nel video sorgente rimane presente. L’app non identifica automaticamente ISO o fotocamera da un video AI.
 

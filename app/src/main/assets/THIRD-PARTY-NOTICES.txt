@@ -1,4 +1,4 @@
-Galaxy Sensor Lab Pixel Bruciati 0.6
+Galaxy Sensor Lab Median Images 0.7
 This Edge Sensor edition is distributed under GNU GPL version 3 or later.
 The separate Galaxy Sensor Lab 0.2 branch (main) is unchanged.
 

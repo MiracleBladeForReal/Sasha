@@ -74,7 +74,7 @@ class SensorPipelineTest {
     @Test fun migrationDropsAllCreativeSettings() {
         val migrated=LabSettings.fromJson("""{"iso":1600,"noiseSeed":632,"noise":2,"readNoise":0.02,"shadowGain":3,"highlightProtect":1,"temporalCoherence":1,"grainSize":12,"grainLuma":1.5,"grainChroma":1.5,"grainSoftness":1,"grainRate":1,"exposure":3,"warmth":1,"contrast":1.5,"saturation":2,"denoise":1,"sharpness":1,"vignette":1}""")
         assertEquals(LabSettings(iso=1600f,noiseSeed=632),migrated)
-        assertEquals(setOf("schema","profileId","iso","noiseSeed","defectsEnabled","defectCount","defectSize","defectIntensity","defectMode","defectSeed"),org.json.JSONObject(migrated.toJson()).keys().asSequence().toSet())
+        assertEquals(setOf("schema","profileId","iso","noiseSeed","defectsEnabled","defectCount","defectSize","defectIntensity","defectMode","defectSeed","medianRadius"),org.json.JSONObject(migrated.toJson()).keys().asSequence().toSet())
         assertEquals(migrated,LabSettings.fromJson(migrated.copy(original=true,compare=true).toJson()))
     }
 
@@ -151,6 +151,18 @@ class SensorPipelineTest {
         assertTrue("Dead pixels must be dark on a gray source",count(black) { r,g,b -> maxOf(r,g,b)<30 }>400)
         assertTrue("RGB defects must be colored",count(rgb) { r,g,b -> maxOf(r,g,b)>150 && minOf(r,g,b)<50 && maxOf(r,g,b)-minOf(r,g,b)>120 }>200)
         listOf(white,more,small,black,rgb).forEach { it.recycle() }; input.delete()
+    }
+
+    @Test fun medianRemovesImpulseFromActualMp4() {
+        val input=createInput(flat=true,level=0)
+        val image=android.graphics.BitmapFactory.decodeFile(input.absolutePath).copy(Bitmap.Config.ARGB_8888,true)
+        image.setPixel(80,80,Color.WHITE)
+        input.outputStream().use { image.compress(Bitmap.CompressFormat.PNG,100,it) }; image.recycle()
+        val off=render(input,LabSettings(iso=100f))
+        val filtered=render(input,LabSettings(iso=100f,medianRadius=1))
+        assertTrue(Color.red(off.getPixel(80,80))>150)
+        assertTrue(Color.red(filtered.getPixel(80,80))<20)
+        off.recycle(); filtered.recycle(); input.delete()
     }
 
     @Test fun sameRealizationRepeatsAndNewRealizationChangesPixels() {
@@ -231,7 +243,7 @@ class SensorPipelineTest {
     }
 
     @Test fun appOpensVideoAndSavesProcessedResult() {
-        assertEquals("Pixel Bruciati must install alongside version 0.5", "com.galaxysensorlab.burntpixels", context.packageName)
+        assertEquals("Pixel Bruciati must install alongside version 0.5", "com.galaxysensorlab.medianimages", context.packageName)
         val png = createInput()
         val source = File(context.cacheDir, "ui-source.mp4")
         render(png, LabSettings(original = true), source).recycle()

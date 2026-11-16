@@ -9,13 +9,13 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.galaxysensorlab.burntpixels"
+        applicationId = "com.galaxysensorlab.medianimages"
         minSdk = 26
         targetSdk = 35
-        versionCode = 6
-        versionName = "0.6"
+        versionCode = 7
+        versionName = "0.7"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        buildConfigField("String", "SOURCE_COMMIT", "\"${System.getenv("GITHUB_SHA") ?: "burnt-pixels-v0.6"}\"")
+        buildConfigField("String", "SOURCE_COMMIT", "\"${System.getenv("GITHUB_SHA") ?: "median-images-v0.7"}\"")
     }
     buildTypes { release { isMinifyEnabled = false } }
     compileOptions {
@@ -27,6 +27,7 @@ android {
 }
 
 dependencies {
+    implementation("androidx.exifinterface:exifinterface:1.3.7")
     implementation("androidx.activity:activity-ktx:1.9.3")
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.7")
     implementation("androidx.media3:media3-effect:1.5.1")

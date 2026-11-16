@@ -8,6 +8,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.background
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -15,6 +18,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -29,11 +33,12 @@ import androidx.media3.ui.PlayerView
 @UnstableApi
 class MainActivity : ComponentActivity() {
     private val model: LabViewModel by viewModels()
+    private val images: ImageLabViewModel by viewModels()
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             MaterialTheme(colorScheme=darkColorScheme(primary=Color(0xFFB4F272),onPrimary=Color(0xFF172707),
-                background=Color(0xFF0C1015),surface=Color(0xFF151B23),secondary=Color(0xFFB8A3FF))) { LabScreen(model) }
+                background=Color(0xFF0C1015),surface=Color(0xFF151B23),secondary=Color(0xFFB8A3FF))) { LabScreen(model,images) }
         }
     }
     override fun onStop() { model.player.pause(); super.onStop() }
@@ -41,11 +46,16 @@ class MainActivity : ComponentActivity() {
 
 @UnstableApi
 @Composable
-private fun LabScreen(model: LabViewModel) {
+private fun LabScreen(model: LabViewModel, images: ImageLabViewModel) {
     val context=LocalContext.current
     val s=model.settings
     val camera=model.calibration.profile(s.profileId)
-    val ready=model.videoUri!=null && !model.busy
+    var imageMode by rememberSaveable { mutableStateOf(false) }
+    val busy=model.busy || images.working
+    val ready=(if(imageMode) images.source!=null else model.videoUri!=null) && !busy
+    LaunchedEffect(s,images.source) { images.render(model.calibration,s) }
+    val imagePicker=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let { uri -> images.load(uri,model.calibration,model.settings) } }
+    val imageExporter=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("image/png")) { it?.let { uri -> images.save(uri,model.calibration,model.settings) } }
     val picker=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let { uri -> model.loadVideo(uri) } }
     val exporter=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("video/mp4")) { it?.let(model::export) }
     var showProfiles by remember { mutableStateOf(false) }
@@ -57,14 +67,23 @@ private fun LabScreen(model: LabViewModel) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
             Row(Modifier.fillMaxWidth().padding(16.dp),verticalAlignment=Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("GALAXY / PIXEL BRUCIATI",color=MaterialTheme.colorScheme.primary,
+                    Text("GALAXY / MEDIAN IMAGES",color=MaterialTheme.colorScheme.primary,
                         style=MaterialTheme.typography.labelMedium,fontWeight=FontWeight.Bold)
                     Text("Modello di rumore del sensore",style=MaterialTheme.typography.titleMedium)
                 }
-                Text("v0.6",style=MaterialTheme.typography.labelSmall)
+                Text("v0.7",style=MaterialTheme.typography.labelSmall)
+            }
+            Row(Modifier.fillMaxWidth().padding(horizontal=16.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                FilterChip(selected=!imageMode,onClick={ imageMode=false },enabled=!busy,label={ Text("Video") })
+                FilterChip(selected=imageMode,onClick={ model.player.pause(); imageMode=true },enabled=!busy,label={ Text("Immagini") })
             }
             Box(Modifier.fillMaxWidth().aspectRatio(16f/9f).background(Color.Black),contentAlignment=Alignment.Center) {
-                if(model.videoUri!=null) {
+                if(imageMode) {
+                    val bitmap=images.preview
+                    if(bitmap!=null) Image(bitmap.asImageBitmap(),"Anteprima immagine",Modifier.fillMaxSize(),contentScale=ContentScale.Fit)
+                    else if(images.source==null) Button(onClick={ imagePicker.launch(arrayOf("image/*")) },enabled=!busy) { Text("Importa immagine") }
+                    if(images.rendering || images.working) CircularProgressIndicator(Modifier.align(Alignment.Center))
+                } else if(model.videoUri!=null) {
                     AndroidView(factory={ ctx -> PlayerView(ctx).apply {
                         player=model.player; keepScreenOn=true
                         setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
@@ -80,10 +99,10 @@ private fun LabScreen(model: LabViewModel) {
                 item {
                     Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
-                            Text(model.videoName,maxLines=1)
-                            Text(model.videoInfo.ifEmpty { "Elaborazione sul telefono" },style=MaterialTheme.typography.labelSmall)
+                            Text(if(imageMode) "Immagine" else model.videoName,maxLines=1)
+                            Text(if(imageMode) images.source?.let { "${it.width} × ${it.height} · PNG in uscita" } ?: "JPG / JPEG · PNG · WebP" else model.videoInfo.ifEmpty { "Elaborazione sul telefono" },style=MaterialTheme.typography.labelSmall)
                         }
-                        TextButton(onClick={ picker.launch(arrayOf("video/*")) },enabled=!model.busy) { Text("Cambia") }
+                        TextButton(onClick={ if(imageMode) imagePicker.launch(arrayOf("image/*")) else picker.launch(arrayOf("video/*")) },enabled=!busy) { Text("Cambia") }
                     }
                 }
                 item {
@@ -98,9 +117,9 @@ private fun LabScreen(model: LabViewModel) {
                             Text("PROFILO SENSORE",color=MaterialTheme.colorScheme.secondary,style=MaterialTheme.typography.labelSmall)
                             Text(camera.displayName,style=MaterialTheme.typography.titleMedium)
                             Text("${camera.dataset} · ISO pubblicati ${camera.minIso.toInt()}–${camera.maxIso.toInt()}",style=MaterialTheme.typography.bodySmall)
-                            OutlinedButton(onClick={ showProfiles=true },enabled=!model.busy,modifier=Modifier.fillMaxWidth()) { Text("Scegli fotocamera") }
+                            OutlinedButton(onClick={ showProfiles=true },enabled=!busy,modifier=Modifier.fillMaxWidth()) { Text("Scegli fotocamera") }
                             Box {
-                                OutlinedButton(onClick={ showIso=true },enabled=!model.busy) { Text("ISO ${s.iso.toInt()}") }
+                                OutlinedButton(onClick={ showIso=true },enabled=!busy) { Text("ISO ${s.iso.toInt()}") }
                                 DropdownMenu(expanded=showIso,onDismissRequest={ showIso=false },modifier=Modifier.heightIn(max=280.dp)) {
                                     camera.points.forEach { point -> DropdownMenuItem(text={ Text("ISO ${point.iso.toInt()}") },onClick={
                                         model.update(s.copy(iso=point.iso)); showIso=false
@@ -114,16 +133,27 @@ private fun LabScreen(model: LabViewModel) {
                 }
                 item {
                     Card {
+                        Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                            Text("MEDIAN",color=MaterialTheme.colorScheme.secondary)
+                            Text(if(s.medianRadius==0) "Spento" else "Raggio ${s.medianRadius} px · ${s.medianRadius*2+1} × ${s.medianRadius*2+1}")
+                            Slider(value=s.medianRadius.toFloat(),onValueChange={ model.update(s.copy(medianRadius=kotlin.math.round(it).toInt())) },
+                                valueRange=0f..2f,steps=1,enabled=!busy,modifier=Modifier.testTag("median-radius"))
+                            Text("Attenua i puntini dell’originale prima di aggiungere rumore e pixel bruciati. Il raggio 2 richiede più elaborazione.",style=MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+                item {
+                    Card {
                         Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
                             Text("PIXEL BRUCIATI",color=MaterialTheme.colorScheme.secondary,style=MaterialTheme.typography.labelSmall)
                             Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
                                 Text("Attiva pixel difettosi",Modifier.weight(1f))
                                 Switch(checked=s.defectsEnabled,onCheckedChange={ model.update(s.copy(defectsEnabled=it)) },
-                                    enabled=!model.busy,modifier=Modifier.testTag("defects-enabled"))
+                                    enabled=!busy,modifier=Modifier.testTag("defects-enabled"))
                             }
                             Text("Punti fissi nel video, anche nell’MP4. Simulazione creativa indipendente dal profilo sensore.",style=MaterialTheme.typography.bodySmall)
                             if(s.defectsEnabled) {
-                                val editable=!model.busy
+                                val editable=!busy
                                 Text("Quantità: ${s.defectCount}")
                                 Slider(value=s.defectCount.toFloat(),onValueChange={ model.update(s.copy(defectCount=kotlin.math.round(it).toInt())) },
                                     valueRange=1f..200f,steps=198,enabled=editable)
@@ -147,6 +177,16 @@ private fun LabScreen(model: LabViewModel) {
                 item {
                     Card {
                         Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
+                            if(imageMode) {
+                                Text("ESPORTAZIONE IMMAGINE PNG",color=MaterialTheme.colorScheme.secondary)
+                                Text("Risoluzione originale · tutti gli effetti · trasparenza conservata",style=MaterialTheme.typography.bodySmall)
+                                Button(onClick={ imageExporter.launch("GalaxySensorLab-${System.currentTimeMillis()}.png") },enabled=ready,
+                                    modifier=Modifier.fillMaxWidth()) { Text("Salva immagine elaborata") }
+                                images.message?.let { Text(it) }
+                                images.result?.let { uri -> TextButton(onClick={
+                                    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri,"image/png").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)) }
+                                }) { Text("Apri immagine salvata") } }
+                            } else {
                             Text("ESPORTAZIONE MP4",color=MaterialTheme.colorScheme.secondary,style=MaterialTheme.typography.labelSmall)
                             Text("H.264 / AAC · risoluzione e frequenza della sorgente",style=MaterialTheme.typography.bodySmall)
                             Text("Tieni l’app aperta durante il salvataggio.",style=MaterialTheme.typography.bodySmall)
@@ -162,6 +202,7 @@ private fun LabScreen(model: LabViewModel) {
                                 runCatching { context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri,"video/mp4")
                                     .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)) }
                             },modifier=Modifier.fillMaxWidth()) { Text("Apri il risultato") } }
+                            }
                         }
                     }
                 }
@@ -195,7 +236,7 @@ private fun LabScreen(model: LabViewModel) {
     if(showLicenses) {
         val license=remember { context.assets.open("THIRD-PARTY-NOTICES.txt").bufferedReader().use { it.readText() }+
             "\n\n"+context.assets.open("LICENSE-GPL-3.0.txt").bufferedReader().use { it.readText() } }
-        AlertDialog(onDismissRequest={ showLicenses=false },title={ Text("Licenze · Pixel Bruciati") },
+        AlertDialog(onDismissRequest={ showLicenses=false },title={ Text("Licenze · Median Images") },
             text={ Text(license,Modifier.heightIn(max=400.dp).verticalScroll(rememberScrollState()),style=MaterialTheme.typography.bodySmall) },
             confirmButton={ TextButton(onClick={ open("https://github.com/MiracleBladeForReal/Sasha/tree/${BuildConfig.SOURCE_COMMIT}") }) { Text("Codice sorgente") } },
             dismissButton={ TextButton(onClick={ showLicenses=false }) { Text("Chiudi") } })

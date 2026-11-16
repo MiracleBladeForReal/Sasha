@@ -18,9 +18,11 @@ data class LabSettings(
     val defectSize: Int = 1,
     val defectIntensity: Float = 1f,
     val defectMode: Int = 0, // White, black, RGB, mixed.
-    val defectSeed: Int = 947
+    val defectSeed: Int = 947,
+    val medianRadius: Int = 0
 ) {
     fun sanitizedDefects(): LabSettings = copy(
+        medianRadius = medianRadius.coerceIn(0, 2),
         defectCount = defectCount.coerceIn(1, 200),
         defectSize = defectSize.coerceIn(1, 6),
         defectIntensity = defectIntensity.takeIf { it.isFinite() }?.coerceIn(0f, 1f) ?: 1f,
@@ -28,11 +30,11 @@ data class LabSettings(
         defectSeed = defectSeed.coerceIn(0, 1_048_575))
 
     fun toJson(): String = JSONObject().apply {
-        put("schema", 3); put("profileId", profileId); put("iso", iso); put("noiseSeed", noiseSeed)
+        put("schema", 4); put("profileId", profileId); put("iso", iso); put("noiseSeed", noiseSeed)
         val d = sanitizedDefects()
         put("defectsEnabled", d.defectsEnabled); put("defectCount", d.defectCount)
         put("defectSize", d.defectSize); put("defectIntensity", d.defectIntensity)
-        put("defectMode", d.defectMode); put("defectSeed", d.defectSeed)
+        put("medianRadius", d.medianRadius); put("defectMode", d.defectMode); put("defectSeed", d.defectSeed)
     }.toString()
     companion object {
         fun fromJson(text: String): LabSettings {
@@ -46,7 +48,8 @@ data class LabSettings(
                 defectSize = j.optInt("defectSize", 1),
                 defectIntensity = j.optDouble("defectIntensity", 1.0).toFloat(),
                 defectMode = j.optInt("defectMode", 0),
-                defectSeed = j.optInt("defectSeed", 947)).sanitizedDefects()
+                defectSeed = j.optInt("defectSeed", 947),
+                medianRadius = j.optInt("medianRadius", 0)).sanitizedDefects()
         }
     }
 }

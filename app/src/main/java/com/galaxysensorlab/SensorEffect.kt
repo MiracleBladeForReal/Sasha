@@ -23,7 +23,7 @@ class SensorEffect(private val calibration: NoiseCalibration, initial: LabSettin
 }
 
 @UnstableApi
-private class SensorProgram(private val calibration: NoiseCalibration,private val effect: SensorEffect)
+internal class SensorProgram(private val calibration: NoiseCalibration,private val effect: SensorEffect)
     : BaseGlShaderProgram(false,1) {
     private val program = GlProgram(VERTEX,FRAGMENT)
     private var width=1
@@ -36,22 +36,9 @@ private class SensorProgram(private val calibration: NoiseCalibration,private va
     override fun drawFrame(inputTexId: Int,presentationTimeUs: Long) {
         try {
             val s=effect.settings.sanitizedDefects()
-            val n=calibration.at(s.iso,s.profileId)
             val timeMs=presentationTimeUs/1000L
             program.use()
-            program.setSamplerTexIdUniform("uTex",inputTexId,0)
-            program.setFloatsUniform("uSize",floatArrayOf(width.toFloat(),height.toFloat()))
-            program.setFloatsUniform("uShot",n.shot)
-            program.setFloatsUniform("uRead",n.read)
-            program.setFloatsUniform("uSeed",floatArrayOf((s.noiseSeed%1024).toFloat(),(s.noiseSeed/1024).toFloat()))
-            program.setFloatsUniform("uTimeKey",floatArrayOf((timeMs%65536L).toFloat(),((timeMs/65536L)%65536L).toFloat()))
-            program.setFloatUniform("uOriginal",if(s.original) 1f else 0f)
-            program.setFloatUniform("uSplit",if(s.compare) s.split else -1f)
-            program.setFloatUniform("uDefectCount",if(s.defectsEnabled) s.defectCount.toFloat() else 0f)
-            program.setFloatUniform("uDefectSize",s.defectSize.toFloat())
-            program.setFloatUniform("uDefectIntensity",s.defectIntensity)
-            program.setFloatUniform("uDefectMode",s.defectMode.toFloat())
-            program.setFloatsUniform("uDefectSeed",floatArrayOf((s.defectSeed%1024).toFloat(),(s.defectSeed/1024).toFloat()))
+            setSensorUniforms(program, calibration, s, inputTexId, width, height, timeMs, false)
             program.bindAttributesAndUniforms()
             GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP,0,4)
             GlUtil.checkGlError()
@@ -63,17 +50,17 @@ private class SensorProgram(private val calibration: NoiseCalibration,private va
         }
     }
     companion object {
-        private const val VERTEX="""
+        internal const val VERTEX="""
             attribute vec4 aFramePosition;
             varying vec2 vUv;
             void main() { gl_Position=aFramePosition; vUv=aFramePosition.xy*0.5+0.5; }
         """
-        private const val FRAGMENT="""
+        internal const val FRAGMENT="""
             precision highp float;
             uniform sampler2D uTex;
             uniform vec2 uSize,uSeed,uTimeKey;
             uniform vec3 uShot,uRead;
-            uniform float uOriginal,uSplit;
+            uniform float uOriginal,uSplit,uMedianRadius,uBitmap;
             uniform float uDefectCount,uDefectSize,uDefectIntensity,uDefectMode;
             uniform vec2 uDefectSeed;
             varying vec2 vUv;
@@ -145,17 +132,70 @@ private class SensorProgram(private val calibration: NoiseCalibration,private va
                 }
                 return mix(value,stuck,uDefectIntensity);
             }
+            vec4 textureInput(vec2 uv) {
+                vec4 c=texture2D(uTex,uv);
+                if(uBitmap>0.5 && c.a>0.0) c.rgb/=c.a;
+                return c;
+            }
+            vec3 linearInput(vec2 uv) {
+                vec3 c=textureInput(clamp(uv,0.5/uSize,1.0-0.5/uSize)).rgb;
+                if(uBitmap<0.5) return c;
+                return mix(c/12.92,pow((c+0.055)/1.055,vec3(2.4)),step(vec3(0.04045),c));
+            }
+            vec3 medianInput() {
+                if(uMedianRadius<0.5) return linearInput(vUv);
+                vec3 samples[25];
+                int count=0;
+                for(int y=-2;y<=2;y++) for(int x=-2;x<=2;x++) {
+                    if(abs(float(x))<=uMedianRadius && abs(float(y))<=uMedianRadius) {
+                        samples[count]=linearInput(vUv+vec2(float(x),float(y))/uSize);
+                        count++;
+                    }
+                }
+                // Component-wise true median of the full 3x3 or 5x5 neighborhood.
+                for(int pass=0;pass<25;pass++) for(int j=0;j<24;j++) {
+                    if(j<count-1-pass) {
+                        vec3 a=samples[j]; vec3 b=samples[j+1];
+                        samples[j]=min(a,b); samples[j+1]=max(a,b);
+                    }
+                }
+                return uMedianRadius<1.5 ? samples[4] : samples[12];
+            }
+            vec3 displayOutput(vec3 c) {
+                if(uBitmap<0.5) return c;
+                return mix(c*12.92,1.055*pow(c,vec3(1.0/2.4))-0.055,step(vec3(0.0031308),c));
+            }
             void main() {
-                vec4 source=texture2D(uTex,vUv);
+                vec4 source=textureInput(vUv);
                 if(uOriginal>0.5 || (uSplit>=0.0 && vUv.x<uSplit)) { gl_FragColor=source; return; }
-                vec3 x=max(source.rgb,0.0);
+                vec3 x=max(medianInput(),0.0);
                 vec2 p=floor(vUv*uSize);
                 vec3 noise=vec3(residual(p,x.r,uShot.r,uRead.r,71.0),
                                 residual(p,x.g,uShot.g,uRead.g,137.0),
                                 residual(p,x.b,uShot.b,uRead.b,211.0));
                 vec3 processed=clamp(x+noise,0.0,1.0);
-                gl_FragColor=vec4(defectivePixel(p,processed),source.a);
+                gl_FragColor=vec4(displayOutput(defectivePixel(p,processed)),source.a);
             }
         """
     }
+}
+
+@UnstableApi
+internal fun setSensorUniforms(program: GlProgram, calibration: NoiseCalibration, s: LabSettings, inputTexId: Int, width: Int, height: Int, timeMs: Long, bitmap: Boolean) {
+    val n=calibration.at(s.iso,s.profileId)
+    program.setSamplerTexIdUniform("uTex",inputTexId,0)
+    program.setFloatsUniform("uSize",floatArrayOf(width.toFloat(),height.toFloat()))
+    program.setFloatsUniform("uShot",n.shot)
+    program.setFloatsUniform("uRead",n.read)
+    program.setFloatsUniform("uSeed",floatArrayOf((s.noiseSeed%1024).toFloat(),(s.noiseSeed/1024).toFloat()))
+    program.setFloatsUniform("uTimeKey",floatArrayOf((timeMs%65536L).toFloat(),((timeMs/65536L)%65536L).toFloat()))
+    program.setFloatUniform("uOriginal",if(s.original) 1f else 0f)
+    program.setFloatUniform("uSplit",if(s.compare) s.split else -1f)
+    program.setFloatUniform("uDefectCount",if(s.defectsEnabled) s.defectCount.toFloat() else 0f)
+    program.setFloatUniform("uDefectSize",s.defectSize.toFloat())
+    program.setFloatUniform("uDefectIntensity",s.defectIntensity)
+    program.setFloatUniform("uDefectMode",s.defectMode.toFloat())
+    program.setFloatsUniform("uDefectSeed",floatArrayOf((s.defectSeed%1024).toFloat(),(s.defectSeed/1024).toFloat()))
+    program.setFloatUniform("uMedianRadius",s.medianRadius.toFloat())
+    program.setFloatUniform("uBitmap",if(bitmap) 1f else 0f)
 }
