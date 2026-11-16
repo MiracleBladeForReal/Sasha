@@ -1,8 +1,8 @@
-name: Build Galaxy Sensor Lab Median Images APK
+name: Build Galaxy Sensor Lab Complete Lab APK
 
 on:
   push:
-    branches: [median-images-v0.7]
+    branches: [complete-lab-v0.8]
   pull_request:
   workflow_dispatch:
 
@@ -42,7 +42,7 @@ jobs:
       - name: Upload installable APK
         uses: actions/upload-artifact@v4
         with:
-          name: GalaxySensorLab-Median-Images-debug-apk
+          name: GalaxySensorLab-Complete-Lab-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30

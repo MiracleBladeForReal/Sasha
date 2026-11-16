@@ -9,13 +9,13 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.galaxysensorlab.medianimages"
+        applicationId = "com.galaxysensorlab.completelab"
         minSdk = 26
         targetSdk = 35
-        versionCode = 7
-        versionName = "0.7"
+        versionCode = 8
+        versionName = "0.8"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        buildConfigField("String", "SOURCE_COMMIT", "\"${System.getenv("GITHUB_SHA") ?: "median-images-v0.7"}\"")
+        buildConfigField("String", "SOURCE_COMMIT", "\"${System.getenv("GITHUB_SHA") ?: "complete-lab-v0.8"}\"")
     }
     buildTypes { release { isMinifyEnabled = false } }
     compileOptions {

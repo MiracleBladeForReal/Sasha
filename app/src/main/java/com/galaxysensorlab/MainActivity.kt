@@ -69,11 +69,11 @@ private fun LabScreen(model: LabViewModel, images: ImageLabViewModel) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
             Row(Modifier.fillMaxWidth().padding(16.dp),verticalAlignment=Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("GALAXY / MEDIAN IMAGES",color=MaterialTheme.colorScheme.primary,
+                    Text("GALAXY / COMPLETE LAB",color=MaterialTheme.colorScheme.primary,
                         style=MaterialTheme.typography.labelMedium,fontWeight=FontWeight.Bold)
                     Text("Modello di rumore del sensore",style=MaterialTheme.typography.titleMedium)
                 }
-                Text("v0.7",style=MaterialTheme.typography.labelSmall)
+                Text("v0.8",style=MaterialTheme.typography.labelSmall)
             }
             Row(Modifier.fillMaxWidth().padding(horizontal=16.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                 FilterChip(selected=!imageMode,onClick={ imageMode=false },enabled=!busy,label={ Text("Video") })
@@ -129,11 +129,20 @@ private fun LabScreen(model: LabViewModel, images: ImageLabViewModel) {
                                     }) }
                                 }
                             }
-                            Text("Varianza per canale = a × segnale + b. Si applicano i coefficienti pubblicati, senza moltiplicatori artistici.",style=MaterialTheme.typography.bodySmall)
+                            Row(verticalAlignment=Alignment.CenterVertically) {
+                                Text("ISO intermedi",Modifier.weight(1f))
+                                Switch(checked=s.interpolateIso,onCheckedChange={ model.update(s.copy(interpolateIso=it)) },enabled=!busy)
+                            }
+                            if(s.interpolateIso && camera.maxIso>camera.minIso) Slider(
+                                value=(kotlin.math.ln(s.iso/camera.minIso)/kotlin.math.ln(camera.maxIso/camera.minIso)).coerceIn(0f,1f),
+                                onValueChange={ model.update(s.copy(iso=camera.minIso*Math.pow((camera.maxIso/camera.minIso).toDouble(),it.toDouble()).toFloat())) },
+                                enabled=!busy,valueRange=0f..1f)
+                            Text("Coefficienti pubblicati a × segnale + b. Quantità e modalità creative sono regolabili separatamente.",style=MaterialTheme.typography.bodySmall)
                             TextButton(onClick={ showData=true }) { Text("Dati e riferimenti originali") }
                         }
                     }
                 }
+                completeControls(s,!busy,model::update,model::newTake)
                 item {
                     Card {
                         Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
@@ -188,10 +197,16 @@ private fun LabScreen(model: LabViewModel, images: ImageLabViewModel) {
                                 images.message?.let { Text(it) }
                                 images.result?.let { uri -> TextButton(onClick={
                                     runCatching { context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri,"image/png").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)) }
-                                }) { Text("Apri immagine salvata") } }
+                                }) { Text("Apri immagine salvata") }
+                                    TextButton(onClick={ shareResult(context,uri,"image/png") }) { Text("Condividi immagine") }
+                                }
                             } else {
                             Text("ESPORTAZIONE MP4",color=MaterialTheme.colorScheme.secondary,style=MaterialTheme.typography.labelSmall)
-                            Text("H.264 / AAC · risoluzione e frequenza della sorgente",style=MaterialTheme.typography.bodySmall)
+                            Row(horizontalArrangement=Arrangement.spacedBy(6.dp)) {
+                                listOf(0,720,1080).forEach { height -> FilterChip(selected=model.exportHeight==height,
+                                    onClick={ model.exportHeight=height },enabled=!busy,label={ Text(if(height==0) "Originale" else "${height}p") }) }
+                            }
+                            Text("H.264 / AAC · nessun ingrandimento · frequenza della sorgente",style=MaterialTheme.typography.bodySmall)
                             Text("Tieni l’app aperta durante il salvataggio.",style=MaterialTheme.typography.bodySmall)
                             if(model.busy) {
                                 val progress=model.progress
@@ -204,7 +219,9 @@ private fun LabScreen(model: LabViewModel, images: ImageLabViewModel) {
                             model.resultUri?.let { uri -> OutlinedButton(onClick={
                                 runCatching { context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri,"video/mp4")
                                     .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)) }
-                            },modifier=Modifier.fillMaxWidth()) { Text("Apri il risultato") } }
+                            },modifier=Modifier.fillMaxWidth()) { Text("Apri il risultato") }
+                                TextButton(onClick={ shareResult(context,uri,"video/mp4") }) { Text("Condividi video") }
+                            }
                             }
                         }
                     }
@@ -239,9 +256,17 @@ private fun LabScreen(model: LabViewModel, images: ImageLabViewModel) {
     if(showLicenses) {
         val license=remember { context.assets.open("THIRD-PARTY-NOTICES.txt").bufferedReader().use { it.readText() }+
             "\n\n"+context.assets.open("LICENSE-GPL-3.0.txt").bufferedReader().use { it.readText() } }
-        AlertDialog(onDismissRequest={ showLicenses=false },title={ Text("Licenze · Median Images") },
+        AlertDialog(onDismissRequest={ showLicenses=false },title={ Text("Licenze · Complete Lab") },
             text={ Text(license,Modifier.heightIn(max=400.dp).verticalScroll(rememberScrollState()),style=MaterialTheme.typography.bodySmall) },
             confirmButton={ TextButton(onClick={ open("https://github.com/MiracleBladeForReal/Sasha/tree/${BuildConfig.SOURCE_COMMIT}") }) { Text("Codice sorgente") } },
             dismissButton={ TextButton(onClick={ showLicenses=false }) { Text("Chiudi") } })
     }
+}
+
+private fun shareResult(context: android.content.Context, uri: Uri, mime: String) {
+    runCatching { context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+        type=mime; putExtra(Intent.EXTRA_STREAM,uri)
+        clipData=android.content.ClipData.newRawUri("Risultato",uri)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    },"Condividi risultato")) }
 }

@@ -8,6 +8,7 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.assertIsDisplayed
@@ -23,6 +24,20 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class ProfileSelectionUiTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
+
+    @Test fun userCanEnableJpegAndResetWithPreset() {
+        compose.runOnIdle { ViewModelProvider(compose.activity)[LabViewModel::class.java].update(LabSettings()) }
+        compose.onNodeWithTag("lab-controls").performScrollToNode(hasTestTag("jpeg-enabled"))
+        compose.onNodeWithTag("jpeg-enabled").performScrollTo().performClick()
+        compose.runOnIdle { assertTrue(ViewModelProvider(compose.activity)[LabViewModel::class.java].settings.jpegEnabled) }
+        compose.onNodeWithTag("lab-controls").performScrollToNode(hasText("Pulito"))
+        compose.onNodeWithText("Pulito").performScrollTo().performClick()
+        compose.runOnIdle {
+            val model=ViewModelProvider(compose.activity)[LabViewModel::class.java]
+            assertFalse(model.settings.jpegEnabled); assertEquals(0f,model.settings.noise,0f)
+            model.update(LabSettings())
+        }
+    }
 
     @Test fun userCanChooseImagesAndSetMedian() {
         compose.onNodeWithText("Immagini").performClick()

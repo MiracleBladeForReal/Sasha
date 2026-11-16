@@ -1,75 +1,54 @@
-# Galaxy Sensor Lab Median Images 0.7
+# Galaxy Sensor Lab Complete Lab 0.8
 
-Nuovo ramo `median-images-v0.7`, basato su Burnt Pixel 0.6. App separata `com.galaxysensorlab.medianimages`: si installa accanto alla 0.6. Nessun ramo precedente viene modificato.
+Nuova app cumulativa sul ramo `complete-lab-v0.8`, basata su Median Images 0.7 con funzioni recuperate dai rami JPEG 0.3, Grain 0.3 ed Edge Capture 0.4. **I rami e le app precedenti restano intatti.** Identificativo separato `com.galaxysensorlab.completelab`, nome **Galaxy Sensor Lab Complete Lab**: si installa accanto alle altre versioni e usa preferenze proprie.
 
-## Median e immagini
+## Funzioni riunite
 
-Il controllo **Median** seleziona spento (0), raggio 1 px (3 × 3) o raggio 2 px (5 × 5). È la mediana per canale RGB dell'intero vicinato, con replica del bordo; non è una media né una sfocatura gaussiana. Viene applicata all'originale prima di rumore e pixel bruciati, mantenendo questi ultimi visibili. Il raggio 2 richiede più lavoro alla GPU, soprattutto sui video ad alta risoluzione.
+- Video SDR e immagini JPG/JPEG, PNG, WebP e altri formati statici decodificabili da Android. Orientamento EXIF rispettato; foto convertite in sRGB, trasparenza conservata. Limite foto 24 megapixel e dimensioni ammesse dalla GPU, senza ridimensionamento automatico. Formati animati: un fotogramma.
+- 439 profili fotocamera: S6 Edge SIDD e 438 modelli darktable, con ricerca e ISO pubblicati. **ISO intermedi** abilita anche l'interpolazione nel range del profilo: log ISO per SIDD, lineare per darktable.
+- Quattro percorsi di rumore: **Sensore (0.7)**, **Classico (JPEG 0.3)**, **Grana naturale (Grain 0.3)** e **Simulazione di ripresa (Edge Capture)**. Quantità del rumore, dimensione, luminanza/colore, morbidezza, rinnovo, rumore di lettura aggiunto, ombre, protezione alte luci e coerenza temporale.
+- **Nuova ripresa** cambia il seme del rumore; il seme viene conservato fra anteprima ed esportazione. Le foto usano timestamp zero, quindi non cambiano grana a ogni aggiornamento del controllo.
+- Esposizione, temperatura, saturazione, contrasto, denoise adattivo, nitidezza e vignettatura recuperati dagli shader precedenti.
+- Preset **Pulito**, **Notte**, **Cinema** e **Azzera tutti gli effetti**. Reset e preset preservano profilo e semi; spengono JPEG, Median e pixel difettosi. Il reset porta anche il rumore a zero. Le impostazioni vengono salvate automaticamente.
+- **Compressione JPEG** con interruttore e intensità 0–100%: quattro passaggi GPU con DCT separabile 8 × 8, tabelle JPEG luminanza/crominanza, quantizzazione e DCT inversa della variante JPEG originale. È un effetto di compressione sul contenuto, non un semplice disegno di blocchi. Non include datamoshing o sottocampionamento 4:2:0.
+- **Median** spento, raggio 1 px (3 × 3) o 2 px (5 × 5), mediana per canale dell'intero vicinato.
+- **Pixel bruciati** bianchi, neri, RGB o misti: quantità 1–200, dimensione 1–6 px, intensità e disposizione. Mappa fissa nel tempo, indipendente dal seme del rumore.
+- Bypass **Originale**, **Prima / dopo** e separatore regolabile. Questi controlli sono solo di anteprima: il file salvato contiene l'intero fotogramma elaborato.
+- Video MP4 H.264/AAC a risoluzione **Originale**, **720p** o **1080p**, senza ingrandire la sorgente; avanzamento, annullamento, apertura e condivisione. Bitrate richiesto 16 Mbps fino a 1080p, 48 Mbps oltre. Nessun cambio intenzionale della frequenza.
+- Foto salvate in **PNG**, alla risoluzione originale, con apertura e condivisione. Anche con effetto JPEG attivo, il contenitore finale resta PNG: gli artefatti JPEG sono impressi nei pixel.
 
-Scegli **Immagini** per aprire JPG/JPEG, PNG, WebP e altri formati statici decodificabili dal dispositivo Android. Orientamento EXIF rispettato, colore convertito in sRGB; per formati animati viene letto un solo fotogramma. Limite 24 megapixel e dimensioni ammesse dalla GPU: gli originali troppo grandi vengono segnalati, senza ridimensionamenti nascosti. Non è un lettore RAW/DNG.
+## Ordine degli effetti e compatibilità
 
-Foto e video condividono shader, Median, profilo/ISO e pixel difettosi. Le foto usano una realizzazione fissa del rumore (timestamp zero), così anteprima e salvataggio sono riproducibili. **Originale** e **Prima / dopo** sono solo controlli di anteprima; l'esportazione PNG contiene l'intera immagine elaborata, alla risoluzione originale e con trasparenza. Il file sorgente non viene sovrascritto. Le impostazioni degli effetti restano salvate; l'immagine selezionata va reimportata dopo la chiusura dell'app.
+Median → rumore/grana → denoise/nitidezza → esposizione/temperatura/saturazione/contrasto/vignettatura → pixel bruciati → compressione JPEG. Il JPEG può attenuare i piccoli pixel difettosi, come avviene comprimendo un'immagine. A 0% o con interruttore spento il passaggio JPEG è escluso.
 
-Per installare apri [la build verde di questo ramo](https://github.com/MiracleBladeForReal/Sasha/actions?query=branch%3Amedian-images-v0.7), scarica **GalaxySensorLab-Median-Images-debug-apk**, estrai lo ZIP e apri `app-debug.apk`.
+I controlli sono riuniti in una nuova pipeline: non viene promessa identità pixel per pixel con tutti i vecchi APK. Il percorso Sensore a impostazioni creative neutre conserva il modello della 0.7. Gli altri percorsi sono ripresi dalle implementazioni creative precedenti. I valori predefiniti scelgono Sensore, quantità 1, sviluppo neutro e JPEG/Median/pixel difettosi spenti.
 
-## Pixel bruciati
+Le sorgenti originali non vengono sovrascritte. Nessun permesso generale alla memoria o alla fotocamera, nessun caricamento in rete. L'immagine selezionata va reimportata alla riapertura dell'app; il video selezionato e le impostazioni vengono conservati. Tieni l'app aperta durante il salvataggio.
 
-Dopo aver importato un video SDR, attiva **Pixel difettosi** nella scheda **PIXEL BRUCIATI**. L'effetto è disattivato inizialmente. Puoi scegliere:
+Il raggio Median 2, le modalità creative e la DCT JPEG aumentano il carico GPU. La variante JPEG usa buffer aggiuntivi (circa 40 MiB a 1080p); foto grandi possono richiedere molta memoria. Superamento dei limiti GPU o memoria viene segnalato. La pipeline video di questa edizione accetta SDR: HDR dichiarato viene rifiutato, senza conversione automatica. Non è un lettore RAW/DNG.
 
-- Quantità da 1 a 200 punti, dimensione da 1 a 6 pixel della sorgente e intensità da 0 a 100%.
-- Punti bianchi (hot/stuck), neri (dead), colorati RGB o misti.
-- **Cambia disposizione** per generare un'altra mappa, salvata automaticamente con gli altri controlli.
+## Installazione
 
-La mappa resta fissa per tutta la clip: il timestamp, l'ISO, la fotocamera e il seme del rumore non spostano i difetti. Dimensione, colore e intensità non ne cambiano la posizione di ancoraggio; aumentando la quantità si conservano i punti già presenti. Anteprima ed esportazione usano lo stesso shader e la stessa mappa, applicata dopo il rumore del sensore. **Originale** esclude entrambi gli effetti, **Prima / dopo** preserva la metà originale. L'MP4 contiene l'intero fotogramma elaborato anche se l'anteprima è in bypass/confronto.
+Apri [Actions del nuovo ramo](https://github.com/MiracleBladeForReal/Sasha/actions?query=branch%3Acomplete-lab-v0.8), scegli la build verde **Build Galaxy Sensor Lab Complete Lab APK** e scarica **GalaxySensorLab-Complete-Lab-debug-apk**. Estrai lo ZIP e apri `app-debug.apk` sul telefono. Non disinstallare le vecchie app.
 
-Questi difetti sono una simulazione creativa, non misure dei sensori SIDD/darktable. Il fotogramma viene suddiviso in 16 × 16 celle con un punto candidato per cella; una permutazione deterministica sceglie il numero richiesto. La dimensione viene limitata alla cella per sorgenti molto piccole; sotto 16 pixel su un lato l'effetto è escluso. La compressione H.264 e il ridimensionamento dell'anteprima possono attenuare i singoli punti: per una prima prova usa 4 px, intensità 100%, Bianchi. Non viene ridimensionata la sorgente.
+Android 8 o successivo. APK di sviluppo: per aggiornamenti futuri con firma stabile servirà una chiave di produzione. Una firma debug incompatibile può richiedere di reinstallare soltanto Complete Lab, perdendo le preferenze di questa app.
 
-## Cosa rimane
+## Modelli, dati e licenze
 
-Importazione di video SDR, selezione del profilo e di un ISO pubblicato, anteprima con bypass o confronto metà/metà, esportazione MP4 H.264/AAC. Nessun ridimensionamento né cambio volontario della frequenza della sorgente. Il confronto è solo in anteprima; l’esportazione applica il modello all’intero fotogramma. Tutta l’elaborazione dell’app avviene sul telefono.
+Il percorso Sensore usa `max(a × segnale + b, 0)` per canale in RGB lineare: Poisson ai bassi conteggi, approssimazione gaussiana da lambda 12. Le intercette darktable negative restano nel calcolo della varianza totale. S6 Edge conserva i sei beta2 uguali a zero. Il moltiplicatore Quantità e tutti i controlli aggiunti sono creativi, non nuove misure del sensore.
 
-Rimangono 439 profili: Samsung Galaxy S6 Edge SIDD predefinito più 438 modelli darktable. Il selettore ISO propone esclusivamente i valori presenti nel profilo, senza cursore di intensità. Al cambio fotocamera l’ISO viene riportato al valore pubblicato più vicino.
+Grana naturale usa campi gaussiani correlati spazialmente. Simulazione di ripresa aggiunge rumore fotonico e di lettura, miscela luminanza/crominanza, curve ombre/luci e correlazione temporale MA(1); l'offset di lettura aggiunto è creativo e non misurato. Non vengono fusi fotogrammi sorgente.
 
-**Assenti dal modello del rumore e dall’interfaccia**: preset, intensità arbitraria, rumore di lettura aggiunto, rinforzo ombre, protezione alte luci, dimensione/morbidezza della grana, miscela artistica luminanza/crominanza, rinnovo e correlazione temporale regolabili, esposizione, temperatura, saturazione, contrasto, denoise, nitidezza e vignettatura. I vecchi valori salvati vengono scartati dalla migrazione: nessun effetto residuo nascosto. Nessuna conversione HDR automatica; il video HDR dichiarato viene rifiutato con un messaggio per evitare modifiche automatiche di luminosità.
+Un MP4 contiene già sviluppo, denoise, nitidezza e compressione. Applicare coefficienti RAW al suo RGB è un'approssimazione: non ricostruisce Bayer/RAW né inverte l'ISP proprietario Samsung. Pixel difettosi, sviluppo colore e JPEG sono simulazioni creative. Non si dichiara una replica completa del telefono o una calibrazione di un video AI.
 
-## Modello del rumore
+SIDD: Abdelhamed, Lin, Brown, CVPR 2018, [tabella al commit fissato](https://github.com/AbdoKamel/abdokamel.github.io/blob/7759f112db725fb68cf89c28432cfd2baea90cb0/sidd/files/noise_level_functions.csv), MIT. Sei righe rappresentative ISO 100–3200 in `sidd_s6.json`, coefficienti e scene conservati.
 
-Per ogni canale RGB, in spazio lineare della pipeline Media3:
+[darktable](https://github.com/darktable-org/darktable/blob/879067695ea85f42d238a5c1603a021d14d71d3f/data/noiseprofiles.json), GPL-3.0-or-later, blob `086a62784df9e660a9cdcfc96d15c5302522502e`, completo e inalterato. ISO duplicati: prima misura pubblicata. Edizione GPL-3.0-or-later; testi e attribuzioni nell'APK, AndroidX/Media3 Apache 2.0, collegamento al commit esatto della build nel dialogo licenze.
 
-`varianza = max(a × segnale + b, 0)`
-
-I coefficienti pubblicati sono usati senza moltiplicatori creativi. Il rumore fotonico è campionato Poisson ai bassi conteggi (`lambda = segnale / a`), con approssimazione gaussiana da lambda 12 e limite di 64 iterazioni/fallback. La componente gaussiana di lettura viene aggiunta solo se `b` pubblicato è positivo. Per intercette darktable negative si usa il residuo fotonico normalizzato scalato con la varianza totale, senza sostituire `b` con zero. Le approssimazioni di distribuzione non cambiano i coefficienti nel file.
-
-Per S6 Edge i sei beta2 sono zero e restano zero: il nero esattamente nullo non riceve un rumore di lettura inventato. Non sono imposte correlazioni spaziali/temporali non misurate; i campioni sono per pixel, canale e timestamp video. Il seme casuale Android viene generato automaticamente all’importazione e conservato alla riapertura; anteprima ed esportazione riutilizzano la stessa realizzazione prima delle differenze introdotte dal codec. Il clipping all’uscita e la compressione possono modificare media/varianza vicino a nero e saturazione.
-
-Il modello non contiene una curva di esposizione o sviluppo colore. Non si può però garantire l’identità luminosa pixel per pixel dopo l’aggiunta di rumore e una ricodifica video con perdita.
-
-## Originali S6 Edge trovati
-
-[GSMArena, sezione video della recensione](https://www.gsmarena.com/samsung_galaxy_s6_edge-review-1236p9.php) dichiara campioni non modificati direttamente dal telefono:
-
-- [1080p30 originale MP4](https://fdn.gsmarena.com/vv/reviewsimg/samsung-galaxy-s6-edge/camera/gsmarena_v002.mp4)
-- [2160p30 originale MP4](https://fdn.gsmarena.com/vv/reviewsimg/samsung-galaxy-s6-edge/camera/gsmarena_v001.mp4)
-
-Collegamenti verificati il 3 novembre 2026 e accessibili nel dialogo dati dell’app. Non sono copie YouTube. Si tratta comunque di video compressi e sviluppati dal telefono, non di RAW; ISO effettivo e trattamento ISP non sono documentati nei campioni.
-
-Il workflow **Verify original S6 Edge video reference** scarica il 1080p30, registra SHA-256 e metadati del contenitore, verifica la decodifica e riporta statistiche dei primi 15 fotogrammi alla risoluzione nativa nell’artefatto JSON. Il report segnala eventuali errori del sito. Non ridistribuisce il filmato. Le differenze fra fotogrammi includono movimento e compressione e **non vengono spacciate per una misura del rumore del sensore**. Nessun coefficiente viene stimato o sostituito automaticamente da quella scena.
-
-**Limite concreto:** questo è un modello basato su dati di rumore RAW, applicato all’RGB video. Non ricostruisce Bayer/demosaicizzazione, risposta ottica, denoise e sharpening video proprietari, tone mapping o ISP Samsung. I campioni trovati permettono un riferimento video, non una calibrazione del sensore a ISO noto. La replica completa del telefono non è dimostrata e l’app non la dichiara.
-
-Android 8 o successivo. Il codec del telefono deve supportare la risoluzione della sorgente; non viene applicato un ridimensionamento nascosto. Bitrate richiesto 16 Mbps fino a 1080p, 48 Mbps oltre: non è una calibrazione della compressione Samsung. Il rumore già contenuto nel video sorgente rimane presente. L’app non identifica automaticamente ISO o fotocamera da un video AI.
-
-## Dati e licenze
-
-SIDD: Abdelhamed, Lin, Brown, CVPR 2018, [tabella al commit fissato](https://github.com/AbdoKamel/abdokamel.github.io/blob/7759f112db725fb68cf89c28432cfd2baea90cb0/sidd/files/noise_level_functions.csv), MIT. Sei righe rappresentative ISO 100–3200 in `sidd_s6.json`, con coefficienti RGB e scena di origine conservati.
-
-[darktable](https://github.com/darktable-org/darktable/blob/879067695ea85f42d238a5c1603a021d14d71d3f/data/noiseprofiles.json), GPL-3.0-or-later, blob originale `086a62784df9e660a9cdcfc96d15c5302522502e`, completo e inalterato. Per ISO duplicati si usa la prima misura pubblicata. L’API interna conserva l’interpolazione storica per compatibilità dei dati, ma l’interfaccia accetta solo ISO pubblicati.
-
-Edizione GPL-3.0-or-later, testo completo e attribuzioni nell’APK; AndroidX/Media3 Apache 2.0. Dialogo licenze con collegamento al commit esatto della build.
+I riferimenti video GSMArena restano disponibili nel dialogo dati: sono video compressi del telefono, non misure RAW o una calibrazione a ISO noto.
 
 ## Verifica
 
-Compilazione, Android lint e prove su Android 15 con codec/GL reali. Test su coefficienti pubblicati, migrazione delle vecchie impostazioni creative, selezione del profilo/ISO, realizzazioni riproducibili, nero S6 senza floor artificiale, media luminosa in spazio approssimativamente lineare, aumento della varianza con segnale e ISO, confronto, rifiuto HDR. Prova integrata di importazione, modifica in pausa, esportazione a dimensioni originali e ripristino della sequenza alla riapertura. Schermate e report sono artefatti della build. Il test su emulatore non misura fedeltà statistica o prestazioni sul Samsung fisico.
+Compilazione APK, Android lint e test Android 15 con codec/GL reali: coefficienti, profili/ISO, controlli creativi e persistenza, effetti su MP4 e foto, JPEG e bordi parziali, bypass/confronto, Median, pixel difettosi, importazione/esportazione delle immagini, colori/trasparenza e ripristino del video. Report e schermate sono artefatti della build. L'emulatore non sostituisce le prove di fluidità o fedeltà su un telefono fisico.
 
-
-Le prove della 0.6 verificano anche persistenza e limiti dei controlli, attivazione dall'interfaccia, punti visibili negli MP4 reali, posizione fissa tra timestamp e ISO/semi del rumore diversi, cambio disposizione, intensità zero, disattivazione, bypass e metà originale pulita.
+La DCT JPEG può essere verificata anche su Linux/Mesa con NumPy e libEGL: `MESA_SHADER_CACHE_DISABLE=true python tools/verify_jpeg_shader.py`. La prova esegue gli shader di produzione e li confronta con un riferimento matematico indipendente, compresi blocchi parziali e due orientamenti dei buffer.

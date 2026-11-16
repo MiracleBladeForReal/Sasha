@@ -50,6 +50,7 @@ object ImagePipeline {
         var surface=EGL14.EGL_NO_SURFACE
         var context=EGL14.EGL_NO_CONTEXT
         var program: GlProgram?=null
+        var jpeg: JpegCompression?=null
         val texture=IntArray(1)
         try {
             val configs=arrayOfNulls<EGLConfig>(1); val count=IntArray(1)
@@ -70,9 +71,17 @@ object ImagePipeline {
             GLUtils.texImage2D(GLES20.GL_TEXTURE_2D,0,source,0)
             program=GlProgram(SensorProgram.VERTEX,SensorProgram.FRAGMENT)
             program.use(); program.setBufferAttribute("aFramePosition",GlUtil.getNormalizedCoordinateBounds(),4)
-            setSensorUniforms(program,calibration,settings.sanitizedDefects(),texture[0],source.width,source.height,0,true)
-            program.bindAttributesAndUniforms(); GLES20.glViewport(0,0,source.width,source.height)
-            GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP,0,4); GlUtil.checkGlError()
+            GLES20.glViewport(0,0,source.width,source.height)
+            val safe=settings.sanitizedDefects()
+            if(safe.jpegEnabled && safe.jpegAmount>0f && !safe.original) jpeg=JpegCompression()
+            jpeg?.begin(source.width,source.height)
+            try {
+                program.use()
+                setSensorUniforms(program,calibration,if(jpeg!=null) safe.copy(compare=false) else safe,texture[0],source.width,source.height,0,true,jpeg!=null)
+                program.bindAttributesAndUniforms()
+                GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP,0,4); GlUtil.checkGlError()
+                jpeg?.finish(texture[0],safe,true)
+            } finally { jpeg?.restoreTarget() }
             val pixels=ByteBuffer.allocateDirect(source.width*source.height*4)
             GLES20.glReadPixels(0,0,source.width,source.height,GLES20.GL_RGBA,GLES20.GL_UNSIGNED_BYTE,pixels)
             GlUtil.checkGlError()
@@ -86,6 +95,7 @@ object ImagePipeline {
                 copyPixelsFromBuffer(pixels)
             }
         } finally {
+            runCatching { jpeg?.release() }
             runCatching { program?.delete() }
             GLES20.glDeleteTextures(1,texture,0)
             EGL14.eglMakeCurrent(display,EGL14.EGL_NO_SURFACE,EGL14.EGL_NO_SURFACE,EGL14.EGL_NO_CONTEXT)

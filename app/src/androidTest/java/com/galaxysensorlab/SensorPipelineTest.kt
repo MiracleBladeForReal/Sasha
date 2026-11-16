@@ -71,11 +71,16 @@ class SensorPipelineTest {
         }
     }
 
-    @Test fun migrationDropsAllCreativeSettings() {
-        val migrated=LabSettings.fromJson("""{"iso":1600,"noiseSeed":632,"noise":2,"readNoise":0.02,"shadowGain":3,"highlightProtect":1,"temporalCoherence":1,"grainSize":12,"grainLuma":1.5,"grainChroma":1.5,"grainSoftness":1,"grainRate":1,"exposure":3,"warmth":1,"contrast":1.5,"saturation":2,"denoise":1,"sharpness":1,"vignette":1}""")
-        assertEquals(LabSettings(iso=1600f,noiseSeed=632),migrated)
-        assertEquals(setOf("schema","profileId","iso","noiseSeed","defectsEnabled","defectCount","defectSize","defectIntensity","defectMode","defectSeed","medianRadius"),org.json.JSONObject(migrated.toJson()).keys().asSequence().toSet())
-        assertEquals(migrated,LabSettings.fromJson(migrated.copy(original=true,compare=true).toJson()))
+    @Test fun completeSettingsRoundTripAndClampCreativeControls() {
+        val saved=LabSettings(iso=1600f,noiseSeed=632,noise=1.4f,noiseMode=3,readNoise=0.01f,
+            shadowGain=2f,highlightProtect=0.7f,temporalCoherence=0.8f,grainSize=4f,grainLuma=0.6f,
+            grainChroma=0.3f,grainSoftness=0.6f,grainRate=12f,exposure=1f,warmth=0.2f,
+            contrast=1.2f,saturation=0.8f,denoise=0.4f,sharpness=0.3f,vignette=0.5f,
+            jpegEnabled=true,jpegAmount=0.8f,medianRadius=2,defectsEnabled=true)
+        assertEquals(saved,LabSettings.fromJson(saved.copy(original=true,compare=true).toJson()))
+        val invalid=LabSettings.fromJson("""{"noise":9,"exposure":-9,"jpegAmount":7,"grainSize":99}""")
+        assertEquals(2f,invalid.noise,0f); assertEquals(-3f,invalid.exposure,0f)
+        assertEquals(1f,invalid.jpegAmount,0f); assertEquals(12f,invalid.grainSize,0f)
     }
 
     @Test fun defectSettingsRoundTripAndRejectInvalidRanges() {
@@ -165,6 +170,77 @@ class SensorPipelineTest {
         off.recycle(); filtered.recycle(); input.delete()
     }
 
+    @Test fun realShaderExportsPlayableMp4AndChangesPixels() {
+        val input = createInput()
+        val baseline = render(input, LabSettings(noise = 0f))
+        val brighter = render(input, LabSettings(noise = 0f, exposure = 1.5f))
+        val noisy = render(input, LabSettings(iso = 3200f, noise = 2f))
+        val bypass = render(input, LabSettings(noise = 2f, exposure = 2f, original = true))
+        val denoised = render(input, LabSettings(iso = 3200f, noise = 2f, denoise = 1f))
+        assertTrue("Exposure must change actual encoded pixels", meanDifference(baseline, brighter) > 12)
+        assertTrue("SIDD noise must change actual encoded pixels", meanDifference(baseline, noisy) > 2)
+        assertTrue("Original bypass must preserve pixels", meanDifference(baseline, bypass) < 3)
+        assertTrue("Denoising must reduce deviation from the clean input",
+            meanDifference(baseline, denoised) < meanDifference(baseline, noisy))
+        listOf(baseline, brighter, noisy, bypass, denoised).forEach { it.recycle() }
+        input.delete()
+    }
+
+    @Test fun jpegDefaultsAndBoundsRemainCompatible() {
+        val old = LabSettings.fromJson("{}")
+        assertFalse(old.jpegEnabled)
+        assertEquals(0.5f, old.jpegAmount, 0f)
+        assertEquals(1f, LabSettings.fromJson("{\"jpegAmount\":7}").jpegAmount, 0f)
+        assertEquals(0f, LabSettings.fromJson("{\"jpegAmount\":-2}").jpegAmount, 0f)
+    }
+
+    @Test fun jpegChangesRealPixelsAndHonorsZeroBypassAndComparison() {
+        val input = createDetailedInput()
+        val clean = LabSettings(noise = 0f)
+        val jpeg = clean.copy(jpegEnabled = true, jpegAmount = 1f)
+        val base = render(input, clean)
+        val compressed = render(input, jpeg)
+        val mild = render(input, jpeg.copy(jpegAmount = 0.05f))
+        val zero = render(input, jpeg.copy(jpegAmount = 0f))
+        val disabled = render(input, jpeg.copy(jpegEnabled = false))
+        val original = render(input, jpeg.copy(original = true, exposure = 1.5f))
+        val split = render(input, jpeg.copy(compare = true, split = 0.47f))
+        assertTrue("JPEG must degrade actual exported detail", meanDifference(base, compressed) > 3)
+        assertTrue("Mild JPEG must preserve more detail than strong JPEG",
+            meanDifference(base, mild) < meanDifference(base, compressed))
+        assertTrue("Zero must bypass JPEG", meanDifference(base, zero) < 3)
+        assertTrue("Disabled JPEG must bypass", meanDifference(base, disabled) < 3)
+        assertTrue("Original must bypass JPEG and development", meanDifference(base, original) < 3)
+        assertTrue("Comparison left must preserve the original", meanDifference(base, split, 0, base.width / 3) < 3)
+        assertTrue("Comparison right must contain JPEG", meanDifference(base, split, base.width * 2 / 3) > 3)
+        listOf(base, compressed, mild, zero, disabled, original, split).forEach { it.recycle() }
+        input.delete()
+    }
+
+    @Test fun jpegHandlesPartialBlocksAtTheImageEdges() {
+        val input = createDetailedInput(318, 238)
+        val bitmap = render(input, LabSettings(noise = 0f, jpegEnabled = true, jpegAmount = 0.8f))
+        assertEquals(318, bitmap.width)
+        assertEquals(238, bitmap.height)
+        assertTrue("Padded edge must not turn black", Color.red(bitmap.getPixel(317, 237)) > 10)
+        bitmap.recycle(); input.delete()
+    }
+
+    private fun createDetailedInput(w: Int = 320, h: Int = 240): File {
+        val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        for (y in 0 until h) for (x in 0 until w) {
+            val detail = if ((x / 2 + y / 3) % 2 == 0) 55 else -35
+            val red = (100 + x * 70 / w + detail).coerceIn(0, 255)
+            val green = (110 + y * 50 / h - detail).coerceIn(0, 255)
+            bitmap.setPixel(x, y, Color.rgb(red, green, 140 + detail))
+        }
+        return File.createTempFile("jpeg-detail", ".png", context.cacheDir).also { file ->
+            file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            bitmap.recycle()
+        }
+    }
+
+
     @Test fun sameRealizationRepeatsAndNewRealizationChangesPixels() {
         val input=createInput(flat=true)
         val seed=NoiseSeeds.next()
@@ -243,7 +319,7 @@ class SensorPipelineTest {
     }
 
     @Test fun appOpensVideoAndSavesProcessedResult() {
-        assertEquals("Pixel Bruciati must install alongside version 0.5", "com.galaxysensorlab.medianimages", context.packageName)
+        assertEquals("Pixel Bruciati must install alongside version 0.5", "com.galaxysensorlab.completelab", context.packageName)
         val png = createInput()
         val source = File(context.cacheDir, "ui-source.mp4")
         render(png, LabSettings(original = true), source).recycle()

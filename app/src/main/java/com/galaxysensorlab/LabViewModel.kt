@@ -70,6 +70,8 @@ class LabViewModel(application: Application) : AndroidViewModel(application) {
         private set
     var resultUri by mutableStateOf<Uri?>(null)
         private set
+    var exportHeight by mutableStateOf(0)
+    private var sourceHeight=1080
     private var sourcePixels = 1920 * 1080
     private var transformer: Transformer? = null
     private var outputFile: File? = null
@@ -89,7 +91,7 @@ class LabViewModel(application: Application) : AndroidViewModel(application) {
 
     fun update(value: LabSettings) {
         val camera = calibration.profile(value.profileId)
-        val safe = value.copy(profileId = camera.id, iso = camera.points.minBy { kotlin.math.abs(it.iso - value.iso) }.iso).sanitizedDefects()
+        val safe = value.copy(profileId = camera.id, iso = if(value.interpolateIso) value.iso.takeIf { it.isFinite() }?.coerceIn(camera.minIso,camera.maxIso) ?: camera.minIso else camera.points.minBy { kotlin.math.abs(it.iso - value.iso) }.iso).sanitizedDefects()
         settings = safe
         effect.settings = safe
         prefs.edit().putString("settings", safe.toJson()).apply()
@@ -139,6 +141,7 @@ class LabViewModel(application: Application) : AndroidViewModel(application) {
                         retriever.setDataSource(app, uri)
                         val w = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 0
                         val h = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 0
+                        sourceHeight=h
                         require(w > 0 && h > 0) { "Il file non contiene una traccia video." }
                         val duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
                         Triple(name, "${w} × ${h} · ${duration / 1000}s", w * h)
@@ -173,6 +176,7 @@ class LabViewModel(application: Application) : AndroidViewModel(application) {
         outputFile = file
         val exportSettings = settings.copy(original = false, compare = false)
         val effects = mutableListOf<Effect>(SensorEffect(calibration, exportSettings))
+        if(exportHeight>0) effects.add(androidx.media3.effect.Presentation.createForHeight(minOf(exportHeight,sourceHeight)))
         val edited = EditedMediaItem.Builder(MediaItem.fromUri(input))
             .setEffects(Effects(emptyList(), effects)).build()
         val composition = Composition.Builder(EditedMediaItemSequence.Builder(edited).build())
