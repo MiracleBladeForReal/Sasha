@@ -48,11 +48,30 @@ class CompletePipelineTest {
         val source=input(); val clean=LabSettings(noise=0f)
         val baseline=ImagePipeline.render(source,calibration,clean)
         for(settings in listOf(clean.copy(exposure=1f),clean.copy(warmth=1f),clean.copy(saturation=0f),
-            clean.copy(contrast=1.5f),clean.copy(vignette=1f),clean.copy(denoise=1f),clean.copy(sharpness=1f))) {
+            clean.copy(contrast=1.5f),clean.copy(vignette=1f),clean.copy(sharpness=1f))) {
             val output=ImagePipeline.render(source,calibration,settings)
             assertTrue("Development control must affect the result: $settings",difference(baseline,output)>0.4)
             output.recycle()
         }
+        // Adaptive denoise should act on low-contrast noise, while preserving the
+        // high-contrast detail in the fixture used for development controls above.
+        val noisy=Bitmap.createBitmap(64,64,Bitmap.Config.ARGB_8888).apply {
+            for(y in 0 until height) for(x in 0 until width) {
+                val gray=120+(x*7+y*13)%9-4
+                setPixel(x,y,Color.rgb(gray,gray,gray))
+            }
+        }
+        val noisyBase=ImagePipeline.render(noisy,calibration,clean)
+        val smooth=ImagePipeline.render(noisy,calibration,clean.copy(denoise=1f))
+        fun variance(bitmap: Bitmap): Double {
+            var sum=0.0; var squared=0.0; var n=0
+            for(y in 4 until 60) for(x in 4 until 60) {
+                val v=Color.red(bitmap.getPixel(x,y)).toDouble(); sum+=v; squared+=v*v; n++
+            }
+            return squared/n-(sum/n)*(sum/n)
+        }
+        assertTrue("Denoise must reduce low-contrast spatial noise",variance(smooth)<variance(noisyBase)*0.8)
+        listOf(noisy,noisyBase,smooth).forEach { it.recycle() }
         for(mode in 0..3) {
             val output=ImagePipeline.render(source,calibration,LabSettings(noiseMode=mode,noise=1.5f,iso=3200f,grainSize=12f,grainChroma=0.6f))
             assertTrue("Noise mode $mode must add noise",difference(baseline,output)>2)
